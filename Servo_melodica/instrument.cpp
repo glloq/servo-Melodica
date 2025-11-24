@@ -46,10 +46,11 @@ int Instrument::getServo(uint8_t midiNote) {
 void Instrument::noteOn(uint8_t midiNote, uint8_t velocity) {
   int servo = getServo(midiNote);
   if (servo != -1) {
-    // Apply volume scaling to velocity
+    // Apply volume scaling to velocity (for air servo only)
     uint8_t scaledVelocity = (velocity * currentVolume) / 127;
 
-    servoController.noteOn(servo, scaledVelocity);
+    // Appuie sur la touche (position fixe, pas de vélocité)
+    servoController.noteOn(servo);
 
     // Track active notes
     if (!activeNotes[servo]) {
@@ -57,6 +58,7 @@ void Instrument::noteOn(uint8_t midiNote, uint8_t velocity) {
       activeNotesCount++;
     }
 
+    // Vélocité gérée uniquement par le servo d'air
     openAir(midiNote, scaledVelocity);
   }
 }

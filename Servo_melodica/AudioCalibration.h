@@ -26,12 +26,17 @@ class AudioCalibration {
 private:
   ServoController& servoController;
   Instrument& instrument;
+  bool lastButtonState;
+  unsigned long lastDebounceTime;
   uint16_t readSoundLevel();  // Lit le niveau sonore du microphone
   uint16_t readAverageSoundLevel(uint8_t samples);  // Moyenne sur plusieurs échantillons
   bool waitForSoundStabilization();  // Attend que le son se stabilise
 
 public:
   AudioCalibration(ServoController& sc, Instrument& inst);
+
+  // Gestion du bouton de calibration
+  void checkCalibrationButton();  // À appeler dans loop()
 
   // Calibration d'un seul servo
   bool calibrateServo(uint8_t servoNum);
