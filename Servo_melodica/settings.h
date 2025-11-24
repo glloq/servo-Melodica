@@ -27,15 +27,20 @@
 
 
 //------------------------------------------- Servos Manager -------------------------
-//ordre des servos dans l'ordre du plus grave au plus aigu
-const uint16_t initialAngles[NUMBER_OF_NOTES] {90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90};
-const uint16_t sensRot[NUMBER_OF_NOTES] {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+// Configuration des 30 servos pour les touches du clavier
+// Ordre : du plus grave (touche 0) au plus aigu (touche 29)
 
-#define ANGLE_NOTE_ON 20
-#define SERVO_RESET_DELAY_MS 200  // Delay for servo movement during reset
-#define USE_VELOCITY_CONTROL true  // Enable velocity-based angle modulation
-#define MIN_VELOCITY_ANGLE 10      // Minimum angle for lowest velocity (pp)
-#define MAX_VELOCITY_ANGLE 30      // Maximum angle for highest velocity (ff)
+// Angles initiaux (position repos, touche relâchée) - À calibrer
+const uint16_t initialAngles[NUMBER_OF_NOTES] {90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90,90};
+
+// Sens de rotation pour chaque servo
+// +1 = rotation horaire pour appuyer, -1 = rotation anti-horaire
+// À ajuster selon le montage mécanique de chaque servo
+const int8_t sensRot[NUMBER_OF_NOTES] {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1};
+
+// Angle de course pour appuyer sur les touches (identique pour tous)
+#define ANGLE_NOTE_ON 20          // Déplacement en degrés pour appuyer
+#define SERVO_RESET_DELAY_MS 200  // Délai entre chaque servo lors du reset
 
 #define PCA1_ADRESS 0x40
 #define PCA2_ADRESS 0x41
@@ -52,9 +57,15 @@ const uint16_t SERVO_PULSE_MAX = 2500;
 const uint16_t SERVO_FREQUENCY = 50;
 
 //------------------------------------------- Audio Calibration -------------------
+// Bouton poussoir pour lancer la calibration automatique
+#define CALIBRATION_BUTTON_PIN 2   // Pin digitale pour bouton (avec pull-up interne)
+
+// Microphone pour détection audio
 #define MIC_PIN A0                 // Pin analogique pour microphone
 #define MIC_SAMPLES 10             // Nombre d'échantillons pour moyennage
 #define SOUND_THRESHOLD 100        // Seuil de détection du son (0-1023)
+
+// Paramètres de calibration automatique
 #define CALIBRATION_TEST_ANGLES 9  // Nombre d'angles à tester (ex: 70-110° par pas de 5°)
 #define CALIBRATION_ANGLE_START 70 // Angle de départ pour calibration
 #define CALIBRATION_ANGLE_STEP 5   // Pas entre chaque angle testé

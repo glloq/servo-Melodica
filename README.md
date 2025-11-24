@@ -23,12 +23,12 @@ Servo-Melodica est un système qui automatise le jeu d'un mélodica en utilisant
 
 ### Caractéristiques Principales
 
-- ✅ **32 notes polyphoniques** - Contrôle simultané de toutes les touches
+- ✅ **30 notes polyphoniques** - Contrôle simultané de toutes les touches
 - ✅ **Contrôle MIDI USB** - Compatible avec tout logiciel MIDI (DAW, séquenceurs)
-- ✅ **Vélocité dynamique** - Pression des touches adaptée à la vélocité MIDI
-- ✅ **Gestion intelligente de l'air** - Servo de valve contrôlé selon les notes actives
+- ✅ **Vélocité dynamique** - Débit d'air adapté à la vélocité MIDI
+- ✅ **Gestion intelligente de l'air** - Servo de valve contrôlé proportionnellement
 - ✅ **Calibration EEPROM** - Sauvegarde persistante des réglages par touche
-- ✅ **Calibration audio automatique** - Détection par microphone pour ajustement optimal
+- ✅ **Calibration audio automatique** - Détection par microphone + bouton
 - ✅ **Messages MIDI avancés** - Volume, Pitch Bend, All Notes Off, etc.
 
 ---
@@ -41,9 +41,9 @@ Servo-Melodica est un système qui automatise le jeu d'un mélodica en utilisant
 |-----------|----------|------|
 | **Arduino** (Mega/Leonardo/Due) | 1 | Contrôleur principal avec USB MIDI |
 | **PCA9685 16-channel PWM Driver** | 2 | Contrôle de 30 servos (touches du clavier) |
-| **Servomoteurs SG90** | 32 | Actionneurs des touches (30) + air (1) + spare |
-| **Microphone électret** (optionnel) | 1 | Calibration automatique par détection audio |
-| **Amplificateur audio LM358** (optionnel) | 1 | Amplification signal microphone |
+| **Servomoteurs SG90** | 31 | Actionneurs des touches (30) + air (1) |
+| **Module Microphone MAX4466** (optionnel) | 1 | Calibration automatique ([voir HARDWARE.md](HARDWARE.md)) |
+| **Bouton poussoir** | 1 | Déclenchement calibration |
 | **Alimentation 5V/10A** | 1 | Alimentation servos |
 | **Mélodica 32 touches** | 1 | Instrument (ex: Yamaha P-32D, Hohner Student) |
 
@@ -65,9 +65,10 @@ Servo-Melodica est un système qui automatise le jeu d'un mélodica en utilisant
               │               │              │
          [Touches 0-14]  [Touches 15-29] [Valve air]
 
-         ┌──────────────┐
-         │  Microphone  │──► A0 (Calibration audio)
-         └──────────────┘
+         ┌──────────────┐          ┌────────────┐
+         │  Microphone  │──► A0    │   Bouton   │──► Pin 2
+         │  MAX4466     │          │ Calibration│
+         └──────────────┘          └────────────┘
 ```
 
 ### Connexions I2C
@@ -77,10 +78,11 @@ Servo-Melodica est un système qui automatise le jeu d'un mélodica en utilisant
 - **PCA9685 #1** : Adresse I2C `0x40` (servos 0-14)
 - **PCA9685 #2** : Adresse I2C `0x41` (servos 15-29)
 
-### Connexions PWM
+### Connexions Autres
 
 - **Servo Air** : Pin 9 (PWM Arduino)
-- **Microphone** : Pin A0 (Analog Input)
+- **Microphone** : Pin A0 (Analog Input) - **[Détails HARDWARE.md](HARDWARE.md)**
+- **Bouton Calibration** : Pin 2 (avec pull-up interne)
 
 ### Notes sur l'Alimentation
 
@@ -102,19 +104,25 @@ Le système apparaît comme un périphérique MIDI USB et accepte :
 - Pitch Bend
 - Reset Controllers
 
-### 2. Gestion de la Vélocité
+### 2. Gestion de la Vélocité MIDI
 
-La vélocité MIDI (0-127) module l'angle d'appui sur les touches :
-- **Vélocité faible** (pp) : Appui doux (MIN_VELOCITY_ANGLE = 10°)
-- **Vélocité moyenne** (mf) : Appui normal (20°)
-- **Vélocité forte** (ff) : Appui maximal (MAX_VELOCITY_ANGLE = 30°)
+**Architecture** :
+- **Servos touches** : Position ON/OFF fixe (pas de modulation)
+- **Servo d'air** : Angle modulé selon vélocité MIDI
+
+**Vélocité → Ouverture d'air** :
+- **pp (vélocité 1-40)** : Ouverture minimale 30°
+- **mf (vélocité 41-80)** : Ouverture moyenne 60°
+- **ff (vélocité 81-127)** : Ouverture maximale 90°
+
+Cette approche offre une meilleure expression musicale que la modulation de pression sur les touches.
 
 ### 3. Contrôle du Débit d'Air
 
-Un servo contrôle la valve d'air du mélodica :
-- **Angle minimal** : Air fermé (aucune note active)
-- **Angle modulé** : Ouverture proportionnelle à la vélocité
-- **Anticipation** : Ouverture avant l'appui des touches pour éviter les retards
+Un servo dédié contrôle la valve d'air du mélodica (Pin 9) :
+- **Angle 0°** : Valve fermée (aucune note active)
+- **Angle 30-90°** : Ouverture proportionnelle à la vélocité
+- **Gestion intelligente** : Valve ouvre AVANT appui sur touches (AIR_ANTICIPATION_MS)
 
 ### 4. Calibration EEPROM
 

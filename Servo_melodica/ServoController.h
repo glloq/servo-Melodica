@@ -29,8 +29,8 @@ public:
   ServoController(); //initialise toutles servomoteurs a l'angle de depart
   bool begin(); // Initialize PWM drivers, returns true on success
   bool isReady(); // Check if controllers are properly initialized
-  void noteOff(uint8_t servoNum); // met le servo a l'angle d'initilisation contre la touche
-  void noteOn(uint8_t servoNum, uint8_t velocity = 127);// actionne la touche avec le servo, velocity 0-127
+  void noteOff(uint8_t servoNum); // Relâche la touche (position repos)
+  void noteOn(uint8_t servoNum);  // Appuie sur la touche (position fixe)
 
   // Calibration functions
   bool saveCalibration(); // Save current calibration to EEPROM

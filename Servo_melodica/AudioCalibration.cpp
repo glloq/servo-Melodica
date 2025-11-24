@@ -1,11 +1,15 @@
 #include "AudioCalibration.h"
 
 AudioCalibration::AudioCalibration(ServoController& sc, Instrument& inst)
-  : servoController(sc), instrument(inst) {
+  : servoController(sc), instrument(inst), lastButtonState(HIGH), lastDebounceTime(0) {
   // Configure microphone pin
   pinMode(MIC_PIN, INPUT);
 
+  // Configure calibration button with internal pull-up
+  pinMode(CALIBRATION_BUTTON_PIN, INPUT_PULLUP);
+
   Serial.println("AudioCalibration initialized");
+  Serial.println("Press calibration button (Pin 2) to start auto-calibration");
 }
 
 uint16_t AudioCalibration::readSoundLevel() {
@@ -41,6 +45,31 @@ bool AudioCalibration::waitForSoundStabilization() {
   }
 
   return true;
+}
+
+void AudioCalibration::checkCalibrationButton() {
+  // Read button state (LOW = pressed with pull-up)
+  bool currentButtonState = digitalRead(CALIBRATION_BUTTON_PIN);
+
+  // Debouncing: only process if state changed and enough time passed
+  if (currentButtonState != lastButtonState) {
+    lastDebounceTime = millis();
+  }
+
+  if ((millis() - lastDebounceTime) > 50) {  // 50ms debounce
+    // Button pressed (LOW with pull-up)
+    if (currentButtonState == LOW && lastButtonState == HIGH) {
+      Serial.println("\n*** CALIBRATION BUTTON PRESSED ***");
+      Serial.println("Starting full auto-calibration...");
+
+      // Launch full calibration
+      calibrateAllServos();
+
+      Serial.println("*** CALIBRATION COMPLETE ***\n");
+    }
+  }
+
+  lastButtonState = currentButtonState;
 }
 
 bool AudioCalibration::checkMicrophone() {
@@ -79,8 +108,8 @@ uint16_t AudioCalibration::testServoAngle(uint8_t servoNum, uint16_t angle) {
   // Wait for stabilization
   delay(CALIBRATION_DELAY_MS);
 
-  // Trigger note
-  servoController.noteOn(servoNum, 100);  // Medium velocity
+  // Trigger note (position fixe, pas de vélocité)
+  servoController.noteOn(servoNum);
 
   // Wait for sound to develop
   delay(150);
@@ -172,7 +201,7 @@ bool AudioCalibration::calibrateServo(uint8_t servoNum) {
   // Test the final calibration
   Serial.println("\nTesting final calibration...");
   delay(500);
-  servoController.noteOn(servoNum, 127);
+  servoController.noteOn(servoNum);
   delay(1000);
   servoController.noteOff(servoNum);
   delay(500);

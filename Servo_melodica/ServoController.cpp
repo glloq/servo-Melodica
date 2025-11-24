@@ -100,8 +100,8 @@ void ServoController::resetServosPosition() {
   Serial.println("All servos reset complete");
 }
 
-// Active la note avec le servo
-void ServoController::noteOn(uint8_t servoNum, uint8_t velocity) {
+// Active la note avec le servo (position fixe noteOn)
+void ServoController::noteOn(uint8_t servoNum) {
   if (!isInitialized) {
     if (DEBUG) {
       Serial.println("ERROR: ServoController not initialized!");
@@ -117,24 +117,9 @@ void ServoController::noteOn(uint8_t servoNum, uint8_t velocity) {
     return;
   }
 
-  // Calculate angle based on velocity if enabled
-  uint16_t pressAngle = ANGLE_NOTE_ON;
-
-  if (USE_VELOCITY_CONTROL) {
-    // Map MIDI velocity (0-127) to angle range (MIN_VELOCITY_ANGLE to MAX_VELOCITY_ANGLE)
-    // velocity 0 is treated as 1 to avoid complete silence
-    uint8_t vel = (velocity == 0) ? 1 : velocity;
-    pressAngle = map(vel, 1, 127, MIN_VELOCITY_ANGLE, MAX_VELOCITY_ANGLE);
-
-    if (DEBUG) {
-      Serial.print("Velocity ");
-      Serial.print(velocity);
-      Serial.print(" -> Angle ");
-      Serial.println(pressAngle);
-    }
-  }
-
-  setServoAngle(servoNum, currentAngles[servoNum] - pressAngle * currentDirections[servoNum]);
+  // Position fixe pour appuyer sur la touche
+  // sensRot détermine le sens de rotation (+1 ou -1)
+  setServoAngle(servoNum, currentAngles[servoNum] - ANGLE_NOTE_ON * currentDirections[servoNum]);
 }
 
 // Desactive la note avec le servo
