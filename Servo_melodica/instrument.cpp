@@ -1,12 +1,12 @@
 #include "Instrument.h"
 
-Instrument::Instrument() : servoController(), activeNotesCount(0), currentVolume(127) {
+Instrument::Instrument() : servoController(), activeNotesCount(0), currentVolume(127), currentAirAngle(AIR_CLOSED_ANGLE) {
   if (DEBUG) {
     Serial.println("DEBUG: Instrument--creation");
   }
-  // Initialize air valve pins
-  pinMode(PIN_VALVE1, OUTPUT);
-  pinMode(PIN_VALVE2, OUTPUT);
+
+  // Initialize air servo
+  airServo.attach(AIR_SERVO_PIN);
   closeAir();
 
   // Initialize active notes array
@@ -83,21 +83,16 @@ void Instrument::noteOff(uint8_t midiNote) {
 }
 
 void Instrument::openAir(uint8_t note, uint8_t velocity) {
-  // Open air valves when a note is played
-  // Could be made more sophisticated by considering velocity or note range
+  // Ouvre la valve d'air en fonction de la vélocité
+  // Plus la vélocité est forte, plus l'angle d'ouverture est grand
 
-  // For melodica, we typically need air flow for all notes
-  // PIN_VALVE1 and PIN_VALVE2 can be used for different pressure levels
-  // or different sections of the keyboard
+  // Map velocity (0-127) to air servo angle (AIR_MIN_ANGLE to AIR_MAX_ANGLE)
+  uint8_t targetAngle = map(velocity, 1, 127, AIR_MIN_ANGLE, AIR_MAX_ANGLE);
 
-  if (velocity < 64) {
-    // Lower velocity - use only valve 1 for softer playing
-    digitalWrite(PIN_VALVE1, HIGH);
-    digitalWrite(PIN_VALVE2, LOW);
-  } else {
-    // Higher velocity - use both valves for stronger air pressure
-    digitalWrite(PIN_VALVE1, HIGH);
-    digitalWrite(PIN_VALVE2, HIGH);
+  // Si l'angle demandé est supérieur à l'angle actuel, mettre à jour
+  if (targetAngle > currentAirAngle) {
+    currentAirAngle = targetAngle;
+    airServo.write(currentAirAngle);
   }
 
   if (DEBUG) {
@@ -105,18 +100,33 @@ void Instrument::openAir(uint8_t note, uint8_t velocity) {
     Serial.print(note);
     Serial.print(" Velocity: ");
     Serial.print(velocity);
+    Serial.print(" Angle: ");
+    Serial.print(currentAirAngle);
     Serial.print(" Active notes: ");
     Serial.println(activeNotesCount);
   }
 }
 
 void Instrument::closeAir() {
-  // Close both air valves
-  digitalWrite(PIN_VALVE1, LOW);
-  digitalWrite(PIN_VALVE2, LOW);
+  // Ferme la valve d'air
+  currentAirAngle = AIR_CLOSED_ANGLE;
+  airServo.write(currentAirAngle);
 
   if (DEBUG) {
     Serial.println("Air closed - No active notes");
+  }
+}
+
+void Instrument::updateAirFlow() {
+  // Met à jour le débit d'air en fonction des notes actives
+  // Trouve la vélocité maximale parmi les notes actives
+  // et ajuste l'angle du servo en conséquence
+
+  if (activeNotesCount == 0) {
+    closeAir();
+  } else {
+    // L'angle est déjà défini par openAir() lors du noteOn
+    // Cette fonction peut être utilisée pour ajustements dynamiques
   }
 }
 

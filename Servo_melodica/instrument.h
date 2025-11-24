@@ -3,6 +3,7 @@
 
 #include "settings.h"
 #include "ServoController.h"
+#include <Servo.h>
 /***********************************************************************************************
 ----------------------------    instrument.h   ----------------------------------------
 ************************************************************************************************
@@ -13,12 +14,15 @@ execute les messages noteOn et noteOff
 class Instrument {
 private:
   ServoController servoController;
+  Servo airServo;            // Servo pour contrôle du débit d'air
   uint8_t activeNotesCount;  // Track number of active notes
   bool activeNotes[NUMBER_OF_NOTES];  // Track which notes are active
   uint8_t currentVolume;     // Current master volume (0-127)
+  uint8_t currentAirAngle;   // Current air servo angle
   int getServo(uint8_t midiNote); //renvoit le numero du servo de 1 a 32 et 0 si la note ne peut pas etre jouée
   void openAir(uint8_t note, uint8_t velocity); // ouvre l'air en fonction de la note et de la velocité
   void closeAir(); // ferme les valves d'air
+  void updateAirFlow(); // Met à jour le débit d'air selon les notes actives
 
 public:
   Instrument();
