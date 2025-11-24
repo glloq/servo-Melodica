@@ -35,19 +35,22 @@ void MidiHandler::processMidiEvent(midiEventPacket_t midiEvent) {
       _instrument.noteOff(note);
       break;
     case 0xE0: // Pitch Bend
-      //int pitchBendValue = (midiEvent.byte3 << 7) | midiEvent.byte2;
-      //_instrument.pitchBend(pitchBendValue);
+      {
+        int16_t pitchBendValue = ((midiEvent.byte3 << 7) | midiEvent.byte2) - 8192;
+        _instrument.pitchBend(pitchBendValue);
+      }
       break;
     case 0xA0: // Channel Pressure (Aftertouch)
-      //int channelPressureValue = midiEvent.byte2;
-      //_instrument.channelPressure(channelPressureValue);
+      // Aftertouch could be used for expression control
+      // Not implemented for melodica
       break;
     case 0xD0: // Polyphonic Key Pressure
-      //int polyKeyPressureValue = midiEvent.byte3;
-      //_instrument.polyKeyPressure(polyKeyPressureValue);
+      // Polyphonic aftertouch
+      // Not implemented for melodica
       break;
     case 0xB0: // Control Change
       processControlChange(note, velocity);
+      break;
     case 0xF0: // System Common or System Real-Time
       // Add logic for handling System Common and System Real-Time messages
       break;
@@ -61,24 +64,34 @@ void MidiHandler::processMidiEvent(midiEventPacket_t midiEvent) {
 --------------        process Control Change             ----------
 ------------------------------------------------------------------*/
 void MidiHandler::processControlChange(byte controller, byte value) {
-  // Add logic for handling Control Change messages
-  // You can switch on the controller value to handle specific control changes
+  // Handle Control Change messages
   switch (controller) {
-     case 1:
-    case 91:
-    case 92:
-    case 94: // Gestion du vibrato
-      //_instrument.modulationWheel(value);
+    case 1:   // Modulation wheel
+    case 91:  // Reverb depth
+    case 92:  // Tremolo depth
+    case 94:  // Detune depth
+      _instrument.modulationWheel(value);
       break;
-    case 0x07: // Volume
-      //_instrument.volumeControl(value);
+    case 0x07: // Volume (CC 7)
+      _instrument.volumeControl(value);
       break;
-    case 121: // Réinitialisation de tous les contrôleurs
-      //_instrument.reset();
+    case 121: // Reset all controllers
+      _instrument.reset();
       break;
-    case 123: // Désactiver toutes les notes
-      //_instrument.mute();
+    case 123: // All notes off
+      _instrument.allNotesOff();
+      break;
+    case 120: // All sound off (similar to all notes off)
+      _instrument.allNotesOff();
       break;
     // Add more cases as needed for other control changes
+    default:
+      if (DEBUG) {
+        Serial.print("Unhandled CC: ");
+        Serial.print(controller);
+        Serial.print(" Value: ");
+        Serial.println(value);
+      }
+      break;
   }
 }
