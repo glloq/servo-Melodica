@@ -1,6 +1,6 @@
 # 🛠️ Outil de Calibration Manuelle - Servo Melodica
 
-Outil Arduino pour calibrer manuellement chaque servo **sans microphone**.
+Outil Arduino pour calibrer manuellement chaque servo **sans microphone** via **Serial Monitor**.
 
 ---
 
@@ -12,6 +12,8 @@ Cet outil permet de :
 - ✅ Tester chaque servo (noteOn / noteOff)
 - ✅ Générer automatiquement le code pour `settings.h`
 
+**Interface** : Commandes clavier via Serial Monitor (pas de boutons physiques requis)
+
 ---
 
 ## 🔧 Matériel Requis
@@ -21,32 +23,9 @@ Cet outil permet de :
 | Arduino Mega/Leonardo | 1 |
 | PCA9685 | 2 |
 | Servos SG90 | 30 |
-| Boutons poussoir | 7 |
-| Câbles |quelques-uns |
+| Câble USB | 1 |
 
----
-
-## 🔌 Câblage des Boutons
-
-Tous les boutons utilisent le **pull-up interne** (pas besoin de résistance).
-
-```
-Arduino Pin X ──┬── [Bouton NO] ── GND
-                │
-         (Pull-up interne)
-```
-
-### Affectation des Pins
-
-| Bouton | Pin | Fonction |
-|--------|-----|----------|
-| **PREV** | 2 | Servo précédent |
-| **NEXT** | 3 | Servo suivant |
-| **ANGLE-** | 4 | Diminuer angle initial |
-| **ANGLE+** | 5 | Augmenter angle initial |
-| **INVERT** | 6 | Inverser sens de rotation |
-| **TEST** | 7 | Tester noteOn/noteOff |
-| **PRINT** | 8 | Afficher code pour settings.h |
+**Aucun bouton physique requis** - Tout se fait via Serial Monitor !
 
 ---
 
@@ -58,37 +37,48 @@ Arduino Pin X ──┬── [Bouton NO] ── GND
 2. Sélectionner la carte (Mega/Leonardo)
 3. Téléverser
 
-### 2. Utilisation
+### 2. Ouvrir Serial Monitor
+
+1. Ouvrir le Serial Monitor (Ctrl+Shift+M)
+2. Configurer à **9600 bauds**
+3. L'interface de calibration s'affiche
+
+### 3. Commandes Clavier
 
 ```
-╔══════════════════════════════════════════╗
-║  SERVO 00 / 29                           ║
-╠══════════════════════════════════════════╣
-║  Angle initial :  90°                    ║
-║  Sens rotation : +1 (horaire)            ║
-╠══════════════════════════════════════════╣
-║  [2] PREV   [3] NEXT                     ║
-║  [4] ANGLE- [5] ANGLE+                   ║
-║  [6] INVERT SENS                         ║
-║  [7] TEST noteOn/Off                     ║
-║  [8] PRINT CODE                          ║
-╚══════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════╗
+║                    COMMANDES DISPONIBLES                     ║
+╠══════════════════════════════════════════════════════════════╣
+║  p     → Servo précédent                                     ║
+║  n     → Servo suivant                                       ║
+║  -     → Diminuer angle de 1°                                ║
+║  +     → Augmenter angle de 1°                               ║
+║  [     → Diminuer angle de 5°                                ║
+║  ]     → Augmenter angle de 5°                               ║
+║  i     → Inverser sens de rotation                           ║
+║  t     → Tester noteOn/noteOff                               ║
+║  c     → Générer code pour settings.h                        ║
+║  h     → Afficher cette aide                                 ║
+╚══════════════════════════════════════════════════════════════╝
 ```
 
-### 3. Calibration Étape par Étape
+**Astuce** : Taper la lettre dans le champ en haut du Serial Monitor et appuyer sur Entrée
+
+### 4. Calibration Étape par Étape
 
 Pour **chaque servo** (0 à 29) :
 
 #### Étape A : Positionner en position REPOS (touche relâchée)
 
 1. Observer le servo et la touche
-2. Utiliser **ANGLE+** ou **ANGLE-** pour ajuster
-3. L'angle doit correspondre à la **position juste avant d'appuyer**
-4. Vérifier que le servo ne touche PAS la touche
+2. Envoyer **+** ou **-** pour ajuster l'angle (1° à la fois)
+3. Utiliser **[** ou **]** pour ajustement rapide (5° à la fois)
+4. L'angle doit correspondre à la **position juste avant d'appuyer**
+5. Vérifier que le servo ne touche PAS la touche
 
 #### Étape B : Tester l'appui
 
-1. Appuyer sur **TEST** (Pin 7)
+1. Envoyer la commande **t** (Test)
 2. Observer le mouvement :
    - **noteOn** : Le servo appuie sur la touche (1 seconde)
    - **noteOff** : Le servo revient en position repos
@@ -96,19 +86,21 @@ Pour **chaque servo** (0 à 29) :
 #### Étape C : Corriger le sens si nécessaire
 
 Si le servo tourne **dans le mauvais sens** :
-1. Appuyer sur **INVERT** (Pin 6)
-2. Refaire le test (**TEST**)
+1. Envoyer **i** (Invert)
+2. Refaire le test avec **t**
 
 #### Étape D : Passer au suivant
 
-1. Appuyer sur **NEXT** (Pin 3)
+1. Envoyer **n** (Next)
 2. Répéter pour tous les servos
 
-### 4. Générer le Code
+**Navigation** : Utiliser **p** (Previous) pour revenir au servo précédent si nécessaire
+
+### 5. Générer le Code
 
 Une fois **tous les servos calibrés** :
 
-1. Appuyer sur **PRINT** (Pin 8)
+1. Envoyer la commande **c** (Code)
 2. Le moniteur série affiche :
 
 ```cpp
@@ -134,11 +126,11 @@ const int8_t sensRot[NUMBER_OF_NOTES] {1,1,-1,1,1,-1,1,1,-1,...};
   Angle : 90°
   Sens : +1 (horaire)
 
-[TEST] → Le servo recule au lieu d'avancer !
+Envoyer : t → Le servo recule au lieu d'avancer !
 
 Solution :
-  [INVERT] → Sens : -1 (anti-horaire)
-  [TEST] → OK ! Le servo appuie correctement
+  Envoyer : i → Sens : -1 (anti-horaire)
+  Envoyer : t → OK ! Le servo appuie correctement
 ```
 
 ### Exemple 2 : Position repos mal réglée
@@ -149,10 +141,29 @@ Solution :
   Le servo touche déjà la touche !
 
 Solution :
-  [ANGLE+] → 91°
-  [ANGLE+] → 92°
-  [ANGLE+] → 93° → OK ! Plus de contact
-  [TEST] → Vérifier que l'appui fonctionne
+  Envoyer : + → 91°
+  Envoyer : + → 92°
+  Envoyer : + → 93° → OK ! Plus de contact
+  Envoyer : t → Vérifier que l'appui fonctionne
+```
+
+### Exemple 3 : Ajustement rapide
+
+```
+Situation : Le servo est à 120° mais devrait être vers 85°
+
+Solution rapide :
+  Envoyer : [ → 115° (diminution de 5°)
+  Envoyer : [ → 110°
+  Envoyer : [ → 105°
+  Envoyer : [ → 100°
+  Envoyer : [ → 95°
+  Envoyer : [ → 90°
+  Envoyer : - → 89° (ajustement fin de 1°)
+  Envoyer : - → 88°
+  Envoyer : - → 87°
+  Envoyer : - → 86°
+  Envoyer : - → 85° → OK !
 ```
 
 ---
@@ -186,22 +197,25 @@ Solution :
 
 ## 🔄 Navigation Rapide
 
-### Raccourcis Clavier (via Serial Monitor)
+### Récapitulatif des Commandes
 
-Si vous préférez utiliser le moniteur série :
+**Navigation entre servos** :
+- `p` : Servo précédent
+- `n` : Servo suivant
 
-```
-Envoyer :
-  p → Servo précédent (PREV)
-  n → Servo suivant (NEXT)
-  - → Diminuer angle
-  + → Augmenter angle
-  i → Inverser sens
-  t → Tester
-  c → Print code
-```
+**Ajustement angle** :
+- `+` ou `=` : Augmenter de 1°
+- `-` : Diminuer de 1°
+- `]` : Augmenter de 5° (ajustement rapide)
+- `[` : Diminuer de 5° (ajustement rapide)
 
-_(Cette fonctionnalité peut être ajoutée facilement au code)_
+**Configuration** :
+- `i` : Inverser le sens de rotation
+
+**Actions** :
+- `t` : Tester noteOn/noteOff
+- `c` : Générer le code pour settings.h
+- `h` ou `?` : Afficher l'aide
 
 ---
 
@@ -232,15 +246,16 @@ _(Cette fonctionnalité peut être ajoutée facilement au code)_
 2. Vérifier connexion GND commune
 3. Tester un servo directement sur Arduino Pin 9
 
-### Problème : Boutons ne répondent pas
+### Problème : Serial Monitor ne répond pas aux commandes
 
 **Causes** :
-- ❌ Câblage boutons incorrect
-- ❌ Debounce trop court
+- ❌ Mauvaise vitesse (bauds) configurée
+- ❌ Caractères non reconnus (encodage)
 
 **Solution** :
-1. Vérifier connexion bouton → GND
-2. Augmenter `debounceDelay` (ligne 51) à 300ms
+1. Vérifier que Serial Monitor est configuré à **9600 bauds**
+2. S'assurer d'envoyer les caractères en minuscule (p, n, i, t, c, h)
+3. Vérifier que "No line ending" ou "Newline" est sélectionné
 
 ---
 
@@ -249,22 +264,23 @@ _(Cette fonctionnalité peut être ajoutée facilement au code)_
 ### Changer l'angle de course
 
 ```cpp
-// Ligne 21
+// Ligne 39
 #define ANGLE_NOTE_ON 20  // Changer si appui trop faible/fort
-```
-
-### Changer le debounce
-
-```cpp
-// Ligne 51
-const unsigned long debounceDelay = 200;  // Augmenter si boutons rebondissent
 ```
 
 ### Ajouter un servo supplémentaire
 
 ```cpp
-// Ligne 18
+// Ligne 38
 #define NUMBER_OF_NOTES 32  // Si vous avez 32 servos au lieu de 30
+```
+
+### Modifier les limites d'angle
+
+```cpp
+// Lignes 47-48
+#define SERVO_MIN_ANGLE 0    // Angle minimal autorisé
+#define SERVO_MAX_ANGLE 180  // Angle maximal autorisé
 ```
 
 ---
@@ -277,12 +293,12 @@ const unsigned long debounceDelay = 200;  // Augmenter si boutons rebondissent
 2. [Ouvrir Serial Monitor 9600 bauds]
           ↓
 3. [Pour chaque servo 0-29:]
-   → Ajuster angle repos (ANGLE+/-)
-   → Tester (TEST)
-   → Inverser si nécessaire (INVERT)
-   → Passer au suivant (NEXT)
+   → Ajuster angle repos (+ / - / [ / ])
+   → Tester (t)
+   → Inverser si nécessaire (i)
+   → Passer au suivant (n)
           ↓
-4. [PRINT] → Copier code généré
+4. [Envoyer : c] → Copier code généré
           ↓
 5. [Coller dans settings.h]
           ↓
@@ -290,6 +306,8 @@ const unsigned long debounceDelay = 200;  // Augmenter si boutons rebondissent
           ↓
 7. [Jouer ! 🎹]
 ```
+
+**Durée estimée** : 15-30 minutes pour calibrer 30 servos
 
 ---
 
