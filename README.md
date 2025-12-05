@@ -226,7 +226,46 @@ const uint16_t initialAngles[32] = {
 
 ## 🎛️ Calibration
 
-### Calibration Manuelle
+### Deux Options de Calibration
+
+#### Option 1 : Calibration Manuelle (RECOMMANDÉE) 🛠️
+
+**Avantages** :
+- ✅ Pas besoin de microphone
+- ✅ Contrôle visuel précis
+- ✅ Plus simple et rapide
+- ✅ Ajustement servo par servo
+
+**Utilisation** : Voir **[Calibration_Tool/README_CALIBRATION.md](Calibration_Tool/README_CALIBRATION.md)**
+
+**Matériel** : 7 boutons poussoir
+
+**Processus** :
+1. Téléverser `Calibration_Tool.ino`
+2. Ajuster chaque servo avec les boutons
+3. Générer le code automatiquement
+4. Copier dans `settings.h`
+
+---
+
+#### Option 2 : Calibration Audio Automatique 🎤
+
+**Avantages** :
+- ✅ Calibration basée sur le son produit
+- ✅ Trouve l'angle optimal automatiquement
+
+**Inconvénients** :
+- ❌ Nécessite microphone MAX4466
+- ❌ Environnement silencieux requis
+- ❌ Plus complexe
+
+**Utilisation** : Voir **[HARDWARE.md](HARDWARE.md)**
+
+**Matériel** : Module MAX4466 + 1 bouton
+
+---
+
+### Calibration Manuelle (avec boutons)
 
 ```cpp
 // Dans le code principal (setup ou via MIDI SysEx)
@@ -257,13 +296,16 @@ servoController.saveCalibration(); // Sauvegarder en EEPROM
    audioCalibration.calibrateAllServos();
    ```
 
-### Indicateurs LED (optionnel)
+### Note : Code Principal sans Calibration Audio
 
-Pour un feedback visuel pendant la calibration :
-```cpp
-#define LED_STATUS 13
-digitalWrite(LED_STATUS, HIGH); // Calibration en cours
-```
+Si vous **n'utilisez PAS** la calibration audio automatique :
+
+1. **Ne pas inclure** `AudioCalibration.h` dans votre `.ino`
+2. **Ne pas créer** d'objet `AudioCalibration`
+3. **Ne pas connecter** le microphone sur A0
+4. **Utiliser uniquement** la calibration manuelle avec boutons
+
+Le code principal fonctionnera parfaitement sans AudioCalibration.
 
 ---
 
