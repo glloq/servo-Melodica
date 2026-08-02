@@ -2,9 +2,12 @@
 
 A single, modular, testable firmware that drives a 32-key melodica with
 servo-actuated keys (via PCA9685 boards) and a configurable air supply. One
-source tree, many build profiles: each profile compiles exactly one MIDI
-transport and one air module around a **shared instrument core** — there is no
-duplicated business logic between the BLE, WiFi, USB, DIN or serial builds.
+source tree, many build profiles: each profile compiles one MIDI transport
+around a **shared instrument core** — no duplicated business logic between the
+BLE, WiFi, USB, DIN or serial builds. The **air system is chosen at runtime**
+(web UI or serial console); WiFi builds expose a **web configuration page** and a
+**setup hotspot** (long-press BOOT). The exact same tree builds in the **Arduino
+IDE** (open `ServoMelodica/ServoMelodica.ino`) and in **PlatformIO**.
 
 > Replaces the previous five parallel sketches (`Servo_melodica`,
 > `Servo_melodica_Simple`, `Servo_melodica_ESP32_BLE`,
@@ -18,7 +21,9 @@ duplicated business logic between the BLE, WiFi, USB, DIN or serial builds.
 - [Transports](#transports)
 - [Air methods](#air-methods)
 - [Wiring](#wiring)
+- [Building — Arduino IDE](#building--arduino-ide)
 - [Build profiles](#build-profiles-platformio)
+- [Configuration (web UI & hotspot)](#configuration-web-ui--hotspot)
 - [Calibration](#calibration)
 - [WiFi configuration](#wifi-configuration)
 - [Testing](#testing)
@@ -28,7 +33,7 @@ duplicated business logic between the BLE, WiFi, USB, DIN or serial builds.
 
 ## Architecture
 
-The transport-agnostic, actuator-agnostic core (`lib/core`) owns all instrument
+The transport-agnostic, actuator-agnostic core (`ServoMelodica/`) owns all instrument
 logic: MIDI semantics, the note-state table, air-flow computation and the
 non-blocking air/key scheduler. Everything hardware-specific sits behind three
 interfaces — `IMidiTransport`, `IKeyDriver`, `IAirController` — so the same core
@@ -88,6 +93,11 @@ attack/release ramps, precharge, inversion). One selected per profile:
 | Permanent external air (digital enable) | `AIR_EXTERNAL` |
 | Simulation (no actuator) | `AIR_SIMULATION` |
 
+By default **every air module is compiled in and the active one is selected at
+runtime** from the stored config (web UI or serial console) — a single binary
+drives any air system. A PlatformIO profile that sets a `-DAIR_<X>` flag trims
+the binary to that one module.
+
 ### Air-flow policy
 
 `AirPolicy` selects how active notes become flow: `Fixed`, `MaximumVelocity`,
@@ -110,18 +120,40 @@ Summary below; full table in [`docs/WIRING.md`](docs/WIRING.md).
 
 Key→board/channel: `driverIndex = key/16`, `channel = key%16` (16 channels/board).
 
+## Building — Arduino IDE
+
+The whole firmware is a flat Arduino sketch, so no PlatformIO is required:
+
+1. Install the **ESP32 boards** (Boards Manager → "esp32" by Espressif, 3.x).
+2. Install these libraries via the Library Manager: *Adafruit PWM Servo Driver
+   Library*, *ESP32Servo*, *MIDI Library* (FortySevenEffects), plus *AppleMIDI*
+   (WiFi builds), *ESP32-BLE-MIDI* (BLE builds) or *Adafruit TinyUSB* (USB builds).
+   `WebServer`, `DNSServer`, `WiFi`, `Wire`, `Preferences` ship with the core.
+3. Open **`ServoMelodica/ServoMelodica.ino`**.
+4. Choose your MIDI transport at the top of **`UserConfig.h`** (uncomment one
+   `TRANSPORT_*`). The default is WiFi + RTP-MIDI, which also enables the web UI.
+5. Select your board (e.g. "ESP32 Dev Module" or "ESP32S3 Dev Module") and Upload.
+
+The air system does **not** need a compile-time choice — pick it later in the web
+UI or serial console. All source files live flat in the sketch folder so the
+Arduino IDE compiles them automatically.
+
 ## Build profiles (PlatformIO)
 
 ```ini
-esp32_ble_servo_air        # BLE  + proportional servo valve
-esp32_wifi_servo_air       # WiFi + proportional servo valve
-esp32_din_servo_air        # DIN  + proportional servo valve
-esp32_ble_pwm_blower       # BLE  + PWM blower
-esp32_wifi_digital_valve   # WiFi + on/off solenoid
-esp32_stepper_bellows      # BLE  + stepper bellows
-esp32s3_usb_servo_air      # S3 native USB + servo valve
-native_tests               # host unit tests
+esp32_ble_servo_air         # BLE  + servo valve (lean, single air module)
+esp32_ble_nimble_servo_air  # BLE  + servo valve, NimBLE stack (lower RAM)
+esp32_wifi_servo_air        # WiFi + all air modules + web UI (default type: servo)
+esp32_din_servo_air         # DIN  + servo valve (lean)
+esp32_ble_pwm_blower        # BLE  + PWM blower (lean)
+esp32_wifi_digital_valve    # WiFi + all air modules + web UI (default type: solenoid)
+esp32_stepper_bellows       # BLE  + stepper bellows (lean)
+esp32s3_usb_servo_air       # S3 native USB + servo valve (lean)
+native_tests                # host unit tests
 ```
+
+WiFi profiles compile every air module (runtime-selectable, web UI enabled);
+`-DAIR_<X>` profiles are lean single-module binaries.
 
 Exact build commands:
 
@@ -140,6 +172,29 @@ pio run -e esp32_ble_servo_air -t monitor   # serial monitor
 
 Dependency versions are pinned in `platformio.ini` for reproducible builds.
 
+## Configuration (web UI & hotspot)
+
+On **WiFi profiles**, everything is configurable from a browser — network
+credentials, MIDI filter (channel/transpose/range), the **air-system type and all
+its parameters and pins**, and per-key calibration — then saved to NVS.
+
+**Reaching the page**
+
+- If the device is joined to your network, browse to its IP (shown on the serial
+  monitor and in the RTP session).
+- If it is **not configured**, or you **long-press the BOOT button (≥ 3 s)**, it
+  starts a WiFi hotspot **`ServoMelodica-Setup`** with a captive portal — connect
+  to it and open <http://192.168.4.1/>.
+
+A **short** BOOT press is a local **panic** (release all keys, close air).
+
+Saving from the web page reboots the device to apply the new configuration
+(needed when the air-system type changes). No recompilation is ever required.
+
+On **non-WiFi profiles** (BLE/DIN/USB) the same settings are configured over the
+serial console (`air <type>`, `pol <policy>`, calibration commands, then `s` and
+`reboot`).
+
 ## Calibration
 
 Calibration is **integrated** — no separate firmware. Open the serial monitor
@@ -156,11 +211,13 @@ x        export as C++            j        export as JSON
 
 Values are applied live, saved to NVS (`s`) without recompiling, and can be
 exported as C++ or JSON. Previous values are restored on reboot if you don't
-save. Legacy angle-based calibration migrates via `migrateLegacyKey()`.
+save. Legacy angle-based calibration migrates via `migrateLegacyKey()`. On WiFi
+builds the same per-key calibration is also editable from the web UI.
 
 ## WiFi configuration
 
-Credentials live **only in NVS**, never in git. Reconnection is a non-blocking
+Set credentials from the web UI (via the `ServoMelodica-Setup` hotspot on first
+use). They live **only in NVS**, never in git. Reconnection is a non-blocking
 state machine with exponential backoff; session loss triggers `allNotesOff()`
 and a safe air stop. See [`docs/WIFI.md`](docs/WIFI.md).
 

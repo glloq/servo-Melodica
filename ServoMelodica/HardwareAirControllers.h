@@ -17,6 +17,29 @@
 
 namespace melodica {
 
+// LEDC PWM API compatibility shim.
+//
+// Arduino-ESP32 core 3.x removed the channel-based LEDC API (ledcSetup /
+// ledcAttachPin / ledcWrite(channel,...)) and replaced it with a pin-based API
+// (ledcAttachChannel / ledcWrite(pin,...)). These helpers compile on both cores
+// so every air module below is source-compatible with core 2.x and 3.x.
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && (ESP_ARDUINO_VERSION_MAJOR >= 3)
+inline void ledcSetupPin(uint8_t pin, uint8_t ch, uint32_t freq, uint8_t resBits) {
+    ledcAttachChannel(pin, freq, resBits, ch);
+}
+inline void ledcWritePin(uint8_t pin, uint8_t /*ch*/, uint32_t duty) {
+    ledcWrite(pin, duty);
+}
+#else
+inline void ledcSetupPin(uint8_t pin, uint8_t ch, uint32_t freq, uint8_t resBits) {
+    ledcSetup(ch, freq, resBits);
+    ledcAttachPin(pin, ch);
+}
+inline void ledcWritePin(uint8_t /*pin*/, uint8_t ch, uint32_t duty) {
+    ledcWrite(ch, duty);
+}
+#endif
+
 // 1) Proportional air valve driven by a hobby servo.
 class ServoValveAirController : public IAirController {
 public:
@@ -97,10 +120,9 @@ public:
     BlowerPwmAirController(const AirConfig& cfg, const AirModuleWiring& w)
         : ramp_(cfg), wiring_(w), pwmFreq_(cfg.pwmFrequencyHz) {}
     bool begin() override {
-        ledcSetup(wiring_.ledcChannel, pwmFreq_, wiring_.ledcResolutionBits);
-        ledcAttachPin(wiring_.primaryPin, wiring_.ledcChannel);
+        ledcSetupPin(wiring_.primaryPin, wiring_.ledcChannel, pwmFreq_, wiring_.ledcResolutionBits);
         if (wiring_.enablePin >= 0) { pinMode(wiring_.enablePin, OUTPUT); digitalWrite(wiring_.enablePin, LOW); }
-        ledcWrite(wiring_.ledcChannel, 0);
+        ledcWritePin(wiring_.primaryPin, wiring_.ledcChannel, 0);
         return true;
     }
     void setDemand(const AirDemand& d) override { ramp_.setDemand(d); }
@@ -111,7 +133,7 @@ private:
     void apply(uint8_t level) {
         if (wiring_.enablePin >= 0) digitalWrite(wiring_.enablePin, level > 0 ? HIGH : LOW);
         uint16_t maxDuty = (1u << wiring_.ledcResolutionBits) - 1u;
-        ledcWrite(wiring_.ledcChannel, (uint32_t)level * maxDuty / 255u);
+        ledcWritePin(wiring_.primaryPin, wiring_.ledcChannel, (uint32_t)level * maxDuty / 255u);
     }
     AirRamp ramp_;
     AirModuleWiring wiring_;
@@ -125,10 +147,9 @@ public:
         : ramp_(cfg), wiring_(w), pwmFreq_(cfg.pwmFrequencyHz) {}
     bool begin() override {
         pinMode(wiring_.secondaryPin, OUTPUT);
-        ledcSetup(wiring_.ledcChannel, pwmFreq_, wiring_.ledcResolutionBits);
-        ledcAttachPin(wiring_.primaryPin, wiring_.ledcChannel);
+        ledcSetupPin(wiring_.primaryPin, wiring_.ledcChannel, pwmFreq_, wiring_.ledcResolutionBits);
         digitalWrite(wiring_.secondaryPin, wiring_.forward ? LOW : HIGH);
-        ledcWrite(wiring_.ledcChannel, 0);
+        ledcWritePin(wiring_.primaryPin, wiring_.ledcChannel, 0);
         return true;
     }
     void setDemand(const AirDemand& d) override { ramp_.setDemand(d); }
@@ -139,7 +160,7 @@ private:
     void apply(uint8_t level) {
         digitalWrite(wiring_.secondaryPin, wiring_.forward ? LOW : HIGH);
         uint16_t maxDuty = (1u << wiring_.ledcResolutionBits) - 1u;
-        ledcWrite(wiring_.ledcChannel, (uint32_t)level * maxDuty / 255u);
+        ledcWritePin(wiring_.primaryPin, wiring_.ledcChannel, (uint32_t)level * maxDuty / 255u);
     }
     AirRamp ramp_;
     AirModuleWiring wiring_;
@@ -153,11 +174,10 @@ public:
         : ramp_(cfg), wiring_(w), useDac_(useDac), pwmFreq_(cfg.pwmFrequencyHz) {}
     bool begin() override {
         if (!useDac_) {
-            ledcSetup(wiring_.ledcChannel, pwmFreq_, wiring_.ledcResolutionBits);
-            ledcAttachPin(wiring_.primaryPin, wiring_.ledcChannel);
-            ledcWrite(wiring_.ledcChannel, 0);
+            ledcSetupPin(wiring_.primaryPin, wiring_.ledcChannel, pwmFreq_, wiring_.ledcResolutionBits);
+            ledcWritePin(wiring_.primaryPin, wiring_.ledcChannel, 0);
         } else {
-            dacWrite(wiring_.primaryPin, 0);  // GPIO25/26 only
+            writeDac(0);  // GPIO25/26 only, on chips that have a DAC
         }
         return true;
     }
@@ -168,11 +188,20 @@ public:
 private:
     void apply(uint8_t level) {
         if (useDac_) {
-            dacWrite(wiring_.primaryPin, level);
+            writeDac(level);
         } else {
             uint16_t maxDuty = (1u << wiring_.ledcResolutionBits) - 1u;
-            ledcWrite(wiring_.ledcChannel, (uint32_t)level * maxDuty / 255u);
+            ledcWritePin(wiring_.primaryPin, wiring_.ledcChannel, (uint32_t)level * maxDuty / 255u);
         }
+    }
+    // DAC output is only present on ESP32 / ESP32-S2. On chips without a DAC
+    // (e.g. ESP32-S3) the call is compiled out; select the PWM path there.
+    void writeDac(uint8_t value) {
+#if defined(SOC_DAC_SUPPORTED) && SOC_DAC_SUPPORTED
+        dacWrite(wiring_.primaryPin, value);
+#else
+        (void)value;  // no DAC on this target
+#endif
     }
     AirRamp ramp_;
     AirModuleWiring wiring_;

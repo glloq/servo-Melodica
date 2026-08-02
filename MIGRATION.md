@@ -2,23 +2,27 @@
 
 The repository previously held **five parallel copies** of the firmware, four of
 which duplicated the same instrument logic. They are replaced by a single
-modular source tree (`src/` + `lib/`) with per-transport / per-air build
-profiles. This document maps every old file to its fate and lists the defects
-that were corrected.
+modular source tree in the **`ServoMelodica/`** Arduino sketch folder (flat
+layout, also built by PlatformIO via `src_dir`) with per-transport build
+profiles and a runtime-selectable air system. This document maps every old file
+to its fate and lists the defects that were corrected.
+
+> All replacement files listed below live flat in `ServoMelodica/`. The
+> `lib/…` paths in the table denote their role/grouping, not a directory.
 
 ## Migration table
 
 | Old file | Fate | Replacement / notes |
 |----------|------|---------------------|
-| **Servo_melodica/Servo_melodica.ino** | Replaced | `src/main.cpp` composition root; no more `new Instrument()` |
-| **Servo_melodica/settings.h** | Replaced | `lib/core/Config.h` + `lib/core/Defaults.h` + NVS (`ConfigStore`) |
-| **Servo_melodica/instrument.h / .cpp** | Merged | `lib/core/InstrumentController.{h,cpp}` (single shared core) |
-| **Servo_melodica/ServoController.h / .cpp** | Replaced | `lib/drivers_key/Pca9685KeyDriver.h` + `lib/core/KeyPulse.h` |
-| **Servo_melodica/MidiHandler.h / .cpp** | Replaced | `lib/core/MidiParser.h` + transport adapters + core event handling |
+| **Servo_melodica/Servo_melodica.ino** | Replaced | `ServoMelodica.ino` composition root; no more `new Instrument()` |
+| **Servo_melodica/settings.h** | Replaced | `Config.h` + `Defaults.h` + NVS (`ConfigStore`) |
+| **Servo_melodica/instrument.h / .cpp** | Merged | `InstrumentController.{h,cpp}` (single shared core) |
+| **Servo_melodica/ServoController.h / .cpp** | Replaced | `Pca9685KeyDriver.h` + `KeyPulse.h` |
+| **Servo_melodica/MidiHandler.h / .cpp** | Replaced | `MidiParser.h` + transport adapters + core event handling |
 | **Servo_melodica/AudioCalibration.h / .cpp** | Obsolete | Incomplete audio auto-calibration removed; superseded by the serial `CalibrationConsole` |
 | **Servo_melodica_Simple/** (all files) | Obsolete | Feature-subset of the main version; folded into the unified core |
-| **Servo_melodica_ESP32_BLE/instrument.\*, ServoController.\*** | Removed (duplicate) | Byte-for-byte copy of the core; now the shared `lib/core` |
-| **Servo_melodica_ESP32_BLE/\*.ino** | Replaced | `BleMidiTransport` behind `IMidiTransport` + `src/main.cpp` |
+| **Servo_melodica_ESP32_BLE/instrument.\*, ServoController.\*** | Removed (duplicate) | Byte-for-byte copy of the core; now the shared `ServoMelodica/` |
+| **Servo_melodica_ESP32_BLE/\*.ino** | Replaced | `BleMidiTransport` behind `IMidiTransport` + `ServoMelodica.ino` |
 | **Servo_melodica_ESP32_BLE/settings.h** | Replaced | `Config.h` / NVS |
 | **Servo_melodica_ESP32_WiFi/instrument.\*, ServoController.\*** | Removed (duplicate) | Same shared core |
 | **Servo_melodica_ESP32_WiFi/\*.ino** | Replaced | `RtpMidiTransport` + `WifiLink` + non-blocking `ConnectionManager` |
@@ -33,7 +37,7 @@ brief is now structurally enforced: there is exactly one `InstrumentController`.
 
 The old firmware stored per-servo `initialAngles[]` (degrees) and `sensRot[]`
 (+1/-1). The new firmware stores absolute pulse widths per key
-(`KeyCalibration`). `lib/core/Calibration.h` provides `migrateLegacyKey()` which
+(`KeyCalibration`). `Calibration.h` provides `migrateLegacyKey()` which
 converts an old `(angle, direction)` pair plus the old `ANGLE_NOTE_ON` travel
 into the new rest/pressed pulses. See the "migration d'une ancienne calibration"
 unit test in `test/test_keydriver.cpp`.

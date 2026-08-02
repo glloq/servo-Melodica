@@ -1,20 +1,24 @@
 // ===========================================================================
 //  Servo Melodica — unified firmware composition root
 // ===========================================================================
-//  A single source tree drives every ESP32 profile. Build flags (set per
-//  PlatformIO environment) select exactly one MIDI transport and one air module;
-//  the transport-agnostic core (lib/core) is shared by all of them with no
-//  duplication. See platformio.ini for the profiles and README for details.
+//  One source tree builds every profile. It compiles unchanged in BOTH the
+//  Arduino IDE (open ServoMelodica.ino) and PlatformIO.
 //
-//  Transport flags (choose one):  TRANSPORT_BLE | TRANSPORT_WIFI_RTP |
-//                                 TRANSPORT_DIN | TRANSPORT_USB | TRANSPORT_SERIAL
-//  Air flags (choose one):        AIR_SERVO_VALVE | AIR_SOLENOID |
-//                                 AIR_STEPPED_SOLENOID | AIR_BLOWER_PWM |
-//                                 AIR_PUMP_HBRIDGE | AIR_PWM_VALVE |
-//                                 AIR_STEPPER_BELLOWS | AIR_EXTERNAL | AIR_SIMULATION
+//  * Transport is chosen at compile time (build flag, or UserConfig.h in the
+//    Arduino IDE): TRANSPORT_BLE | TRANSPORT_WIFI_RTP | TRANSPORT_DIN |
+//    TRANSPORT_USB | TRANSPORT_SERIAL.
+//  * The AIR SYSTEM is chosen at RUNTIME from the stored config (web UI / serial
+//    console). By default every air module is compiled in; a -DAIR_<X> flag
+//    trims the binary to a single module.
+//  * On WiFi profiles a web config UI + captive hotspot is available: a LONG
+//    press on the BOOT button (or an unconfigured network) starts the hotspot.
+//    A SHORT press is a local panic.
 // ===========================================================================
 #include <Arduino.h>
 
+#include "UserConfig.h"  // compile-time defaults (transport) — edit in Arduino IDE
+
+#include "AirControllerFactory.h"
 #include "Config.h"
 #include "Defaults.h"
 #include "InstrumentController.h"
@@ -24,16 +28,19 @@
 #include "CalibrationConsole.h"
 #include "ConfigStore.h"
 
-// --- Air module selection --------------------------------------------------
-#include "SimulationAirController.h"
-#if !defined(AIR_SIMULATION)
-#include "HardwareAirControllers.h"
+// The web config portal is available on WiFi builds.
+#if defined(MELODICA_WEB_CONFIG)
+#include "WebConfigPortal.h"
 #endif
 
 // --- Transport selection ---------------------------------------------------
 #if defined(TRANSPORT_BLE)
 #include <BLEMIDI_Transport.h>
+#if defined(MELODICA_BLE_NIMBLE)
+#include <hardware/BLEMIDI_ESP32_NimBLE.h>
+#else
 #include <hardware/BLEMIDI_ESP32.h>
+#endif
 #include "BleMidiTransport.h"
 BLEMIDI_CREATE_INSTANCE("Servo Melodica", MIDI);
 #elif defined(TRANSPORT_WIFI_RTP)
@@ -57,27 +64,11 @@ MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, gUsbMidiDev, MIDI);
 
 using namespace melodica;
 
-// Hardware pin map for air modules (edit or override per board as needed).
 namespace {
-constexpr int8_t kAirServoPin = 13;
-constexpr int8_t kAirPwmPin = 13;
-constexpr int8_t kAirDirPin = 14;
-constexpr int8_t kAirEnablePin = 27;
 constexpr int8_t kPanicButtonPin = 0;  // BOOT button, active-low
 constexpr bool kEnableCalibrationConsole = true;
-
-AirModuleWiring makeAirWiring() {
-    AirModuleWiring w;
-    w.primaryPin = kAirPwmPin;
-    w.secondaryPin = kAirDirPin;
-    w.enablePin = kAirEnablePin;
-    w.ledcChannel = 4;
-    w.ledcResolutionBits = 8;
-    w.stagePins[0] = 32; w.stagePins[1] = 33; w.stageCount = 2;
-    w.stepPin = 18; w.dirPin = 19; w.stepperMaxSteps = 2000;
-    (void)kAirServoPin;
-    return w;
-}
+constexpr uint32_t kLongPressMs = 3000;   // >= this => start config hotspot
+constexpr uint32_t kShortPressMaxMs = 1500;  // <= this (on release) => panic
 }  // namespace
 
 // Runtime configuration + component pointers (bound in setup()).
@@ -89,50 +80,29 @@ static SafetyManager* gSafety = nullptr;
 static IMidiTransport* gTransport = nullptr;
 static CalibrationConsole* gConsole = nullptr;
 static bool gWasConnected = false;
+#if defined(MELODICA_WEB_CONFIG)
+static WebConfigPortal* gPortal = nullptr;
+#endif
 
 void setup() {
     Serial.begin(115200);
     delay(200);
     LOG_INFO("Servo Melodica unified firmware starting");
 
-    // Load persisted configuration (calibration, credentials, air params...).
     gConfig = ConfigStore::load();
 
     // --- Key driver (PCA9685 x N) ---
     static Pca9685KeyDriver keys(gConfig.i2c, gConfig.keyDriver, gConfig.keys);
     gKeys = &keys;
 
-    // --- Air module (exactly one, chosen at build time) ---
-    static AirModuleWiring wiring = makeAirWiring();
-#if defined(AIR_SIMULATION)
-    static SimulationAirController air(gConfig.air);
-#elif defined(AIR_SERVO_VALVE)
-    static ServoValveAirController air(gConfig.air, wiring);
-#elif defined(AIR_SOLENOID)
-    static SolenoidAirController air(gConfig.air, wiring);
-#elif defined(AIR_STEPPED_SOLENOID)
-    static SteppedSolenoidAirController air(gConfig.air, wiring);
-#elif defined(AIR_BLOWER_PWM)
-    static BlowerPwmAirController air(gConfig.air, wiring);
-#elif defined(AIR_PUMP_HBRIDGE)
-    static PumpHBridgeAirController air(gConfig.air, wiring);
-#elif defined(AIR_PWM_VALVE)
-    static PwmValveAirController air(gConfig.air, wiring, /*useDac=*/false);
-#elif defined(AIR_STEPPER_BELLOWS)
-    static StepperBellowsAirController air(gConfig.air, wiring);
-#elif defined(AIR_EXTERNAL)
-    static ExternalAirController air(gConfig.air, wiring);
-#else
-#error "Select an air module (AIR_* build flag)"
-#endif
-    gAir = &air;
+    // --- Air module: selected at RUNTIME from gConfig.air.type ---
+    static AirControllerStorage airStorage;
+    gAir = createAirController(gConfig, airStorage);
 
-    // --- Instrument core ---
-    static InstrumentController instrument(gConfig, keys, air);
+    static InstrumentController instrument(gConfig, keys, *gAir);
     gInstrument = &instrument;
 
-    // --- Safety supervisor ---
-    static SafetyManager safety(gConfig.safety, instrument, keys, air);
+    static SafetyManager safety(gConfig.safety, instrument, keys, *gAir);
     gSafety = &safety;
 
     // --- Transport (exactly one) ---
@@ -147,7 +117,7 @@ void setup() {
 #elif defined(TRANSPORT_USB)
     static UsbMidiTransport<decltype(MIDI)> transport(MIDI);
 #elif defined(TRANSPORT_SERIAL)
-    static SerialMidiTransport transport(Serial);
+    static SerialMidiTransport transport(Serial2, 115200, 16, 17);
 #endif
     gTransport = &transport;
 
@@ -159,10 +129,51 @@ void setup() {
     transport.begin();
     LOG_INFO("Transport: %s", transport.name());
 
+#if defined(MELODICA_WEB_CONFIG)
+    static WebConfigPortal portal(gConfig);
+    gPortal = &portal;
+    portal.begin();
+    // No network credentials yet => bring up the setup hotspot automatically.
+    if (gConfig.network.ssid[0] == '\0') {
+        LOG_INFO("No WiFi credentials stored: starting config hotspot");
+        portal.startHotspot();
+    }
+#endif
+
     if (kEnableCalibrationConsole) {
         static CalibrationConsole console(gConfig, keys, Serial);
         gConsole = &console;
         console.begin();
+    }
+}
+
+// Distinguish a short BOOT press (panic) from a long press (start hotspot).
+static void serviceButton(uint32_t nowUs) {
+    static bool down = false;
+    static uint32_t startMs = 0;
+    static bool longHandled = false;
+    const uint32_t nowMs = millis();
+    const bool pressed = digitalRead(kPanicButtonPin) == LOW;
+
+    if (pressed && !down) {
+        down = true;
+        startMs = nowMs;
+        longHandled = false;
+    } else if (pressed && down) {
+        if (!longHandled && (nowMs - startMs) >= kLongPressMs) {
+            longHandled = true;
+#if defined(MELODICA_WEB_CONFIG)
+            LOG_INFO("Long press: starting config hotspot");
+            if (gPortal) gPortal->startHotspot();
+#else
+            LOG_INFO("Long press (no web config on this profile)");
+#endif
+        }
+    } else if (!pressed && down) {
+        down = false;
+        if (!longHandled && (nowMs - startMs) <= kShortPressMaxMs) {
+            gSafety->triggerPanic(nowUs);
+        }
     }
 }
 
@@ -186,13 +197,14 @@ void loop() {
     }
     gWasConnected = connected;
 
-    // 3) Local panic button (active-low).
-    if (digitalRead(kPanicButtonPin) == LOW) {
-        gSafety->triggerPanic(nowUs);
-    }
+    // 3) BOOT button: short = panic, long = config hotspot.
+    serviceButton(nowUs);
 
-    // 4) Advance schedulers, safety watchdogs and the optional console.
+    // 4) Advance schedulers, safety watchdogs, console and web portal.
     gInstrument->update(nowUs);
     gSafety->update(nowUs, connected);
     if (gConsole) gConsole->update();
+#if defined(MELODICA_WEB_CONFIG)
+    if (gPortal) gPortal->update();
+#endif
 }

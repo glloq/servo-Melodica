@@ -1,7 +1,9 @@
 # Wiring
 
-Default pin assignments for an ESP32 DevKit (`esp32dev`). Override in
-`src/main.cpp` (`makeAirWiring()` and the pin constants) or via `Config` for I2C.
+Default pin assignments for an ESP32 DevKit (`esp32dev`). Air-actuator pins and
+I2C are part of the persisted config (`AirModuleWiring` / `I2cConfig`) and are
+editable from the web UI (WiFi builds) or the serial console — no recompilation
+needed. The compile-time defaults live in `Config.h`.
 
 ## I2C bus (PCA9685 key boards)
 
@@ -35,7 +37,8 @@ externally (e.g. a MOSFET/relay), which is independent of `OE`.
 
 ## Air actuator pins (per module)
 
-`makeAirWiring()` in `src/main.cpp`. Only the pins for the selected module are used.
+Set in `AirModuleWiring` (config / web UI). Only the pins for the selected module
+are used.
 
 | Module (build flag) | Pins used |
 |---------------------|-----------|
@@ -58,6 +61,8 @@ externally (e.g. a MOSFET/relay), which is independent of `OE`.
 | USB (S2/S3) | native USB connector |
 | Serial | USB-serial / UART to the host (e.g. Raspberry Pi) |
 
-## Panic button
+## Panic / setup button
 
-`GPIO0` (BOOT button) is read active-low as a local panic input.
+`GPIO0` (BOOT button, active-low): a **short** press is a local panic (release
+keys, close air); a **long** press (≥ 3 s) starts the WiFi setup hotspot + web UI
+(WiFi builds).
