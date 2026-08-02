@@ -11,6 +11,10 @@ namespace melodica {
 // for the serial calibration console.
 inline BoardConfig makeDefaultConfig() {
     BoardConfig cfg;  // struct member initialisers already provide safe values
+#ifdef DEFAULT_AIR_TYPE
+    // A profile may set the initial air-system type (still runtime-changeable).
+    cfg.air.type = static_cast<AirSystemType>(DEFAULT_AIR_TYPE);
+#endif
     for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
         cfg.keys[i].restPulseUs = 1500;
         cfg.keys[i].pressedPulseUs = 1900;

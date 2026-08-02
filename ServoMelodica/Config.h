@@ -58,7 +58,41 @@ struct KeyDriverConfig {
 // ---------------------------------------------------------------------------
 // Air system configuration
 // ---------------------------------------------------------------------------
+// Which physical air system is used. Selectable at runtime (stored in NVS, set
+// from the web UI / serial console) so a single binary can drive any of them;
+// lean single-module builds still exist via the -DAIR_* compile flags.
+enum class AirSystemType : uint8_t {
+    ServoValve = 0,       // proportional valve on a hobby servo
+    Solenoid,             // on/off solenoid
+    SteppedSolenoid,      // several solenoids in flow steps
+    BlowerPwm,            // DC blower/fan via PWM
+    PumpHBridge,          // DC pump + H-bridge (direction configurable)
+    PwmValve,             // proportional valve via PWM
+    PwmValveDac,          // proportional valve via DAC (ESP32/S2 only)
+    StepperBellows,       // bellows driven by a stepper
+    ExternalAir,          // permanent external air + digital enable
+    Simulation            // no actuator
+};
+
+// Per-actuator wiring, persisted in config so pins are editable from the UI.
+// Only the fields relevant to the selected AirSystemType are used.
+struct AirModuleWiring {
+    int8_t primaryPin = 13;    // servo / PWM / blower / DAC output
+    int8_t secondaryPin = 14;  // H-bridge direction / secondary control
+    int8_t enablePin = 27;     // digital enable/permission (external, blower)
+    bool forward = true;       // pump/bellows direction
+    uint8_t ledcChannel = 4;   // LEDC channel for PWM actuators
+    uint8_t ledcResolutionBits = 8;
+    int8_t stagePins[4] = {32, 33, -1, -1};  // stepped-solenoid bank
+    uint8_t stageCount = 2;
+    int8_t stepPin = 18;       // stepper (bellows)
+    int8_t dirPin = 19;
+    uint16_t stepperMaxSteps = 2000;
+};
+
 struct AirConfig {
+    AirSystemType type = AirSystemType::ServoValve;
+    AirModuleWiring wiring;
     AirPolicy policy = AirPolicy::MaximumVelocity;
     bool inverted = false;
     uint32_t pwmFrequencyHz = 20000;  // for blower/pump/PWM-valve modules

@@ -70,6 +70,24 @@ private:
         }
         if (!strcmp(cmd, "x")) { exportCpp(); return; }
         if (!strcmp(cmd, "j")) { exportJson(); return; }
+        // Air-system configuration (works on every profile, incl. non-WiFi).
+        if (!strcmp(cmd, "air")) {
+            cfg_.air.type = (AirSystemType)arg;
+            io_.print(F("air type=")); io_.print((int)arg);
+            io_.println(F(" (save with 's', reboot to apply)"));
+            return;
+        }
+        if (!strcmp(cmd, "pol")) {
+            cfg_.air.policy = (AirPolicy)arg;
+            io_.print(F("air policy=")); io_.println((int)arg);
+            return;
+        }
+        if (!strcmp(cmd, "reboot")) {
+            io_.println(F("rebooting..."));
+            delay(100);
+            ESP.restart();
+            return;
+        }
         io_.println(F("unknown command (type ?)"));
     }
 
@@ -134,7 +152,8 @@ private:
     }
 
     void help() {
-        io_.println(F("k<n> r<us> p<us> lo<us> hi<us> v t ta d s x j ?"));
+        io_.println(F("keys: k<n> r<us> p<us> lo<us> hi<us> v t ta d s x j"));
+        io_.println(F("air:  air<0-9 type> pol<0-4>  (then s + reboot)"));
     }
 
     BoardConfig& cfg_;
