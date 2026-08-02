@@ -78,7 +78,45 @@ enum class AirSystemType : uint8_t {
     PwmValveDac,          // proportional valve via DAC (ESP32/S2 only)
     StepperBellows,       // bellows driven by a stepper
     ExternalAir,          // permanent external air + digital enable
-    Simulation            // no actuator
+    Simulation,           // no actuator
+    Composite             // 4-stage: source -> main valve -> flow -> (sensor)
+};
+
+// --- Composable air-system stages (used when type == Composite) -------------
+// A composite air system is built from four independent, separately-configurable
+// stages, e.g. a solenoid MAIN VALVE + a servo FLOW ("servoflow") fed by a
+// blower/pump/reservoir SOURCE, optionally regulated by a pressure SENSOR.
+enum class MainValveKind : uint8_t { None, Solenoid };
+enum class FlowKind : uint8_t { None, Servo, Pwm, Dac };
+enum class SourceKind : uint8_t { External, Blower, Pump, Reservoir };
+
+struct CompositeAirConfig {
+    MainValveKind mainValve = MainValveKind::Solenoid;
+    FlowKind flow = FlowKind::Servo;
+    SourceKind source = SourceKind::Blower;
+
+    // Main valve
+    int8_t mainValvePin = 26;
+    bool mainValveActiveHigh = true;
+
+    // Flow actuator ("servoflow" / PWM / DAC)
+    int8_t flowPin = 13;
+    uint8_t flowLedcChannel = 4;
+
+    // Source (blower/pump)
+    int8_t sourcePwmPin = 32;
+    int8_t sourceDirPin = 33;      // pump direction
+    int8_t sourceEnablePin = 25;   // external-air enable / source on-off
+    uint8_t sourceLedcChannel = 5;
+    bool sourceForward = true;
+
+    // Optional pressure sensor + reservoir regulation
+    bool sensorEnabled = false;
+    int8_t sensorPin = 34;         // ADC-capable GPIO
+    uint16_t sensorMinRaw = 0;     // raw ADC at 0 pressure
+    uint16_t sensorMaxRaw = 4095;  // raw ADC at full pressure
+    uint8_t targetPressure = 200;  // 0..255 reservoir set-point
+    uint8_t pressureHysteresis = 20;  // bang-bang band around the set-point
 };
 
 // Per-actuator wiring, persisted in config so pins are editable from the UI.
@@ -99,7 +137,8 @@ struct AirModuleWiring {
 
 struct AirConfig {
     AirSystemType type = AirSystemType::ServoValve;
-    AirModuleWiring wiring;
+    AirModuleWiring wiring;         // used by the single-actuator module types
+    CompositeAirConfig composite;   // used when type == Composite
     AirPolicy policy = AirPolicy::MaximumVelocity;
     bool inverted = false;
     uint32_t pwmFrequencyHz = 20000;  // for blower/pump/PWM-valve modules

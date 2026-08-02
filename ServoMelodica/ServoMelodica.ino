@@ -96,9 +96,11 @@ void setup() {
                                  gConfig.instrument.noteCount);
     gKeys = &keys;
 
-    // --- Air module: selected at RUNTIME from gConfig.air.type ---
+    // --- Air system: selected at RUNTIME from gConfig.air.type (incl. the
+    //     4-stage Composite: source -> main valve -> flow -> optional sensor) ---
     static AirControllerStorage airStorage;
-    gAir = createAirController(gConfig, airStorage);
+    static CompositeAirStorage compositeStorage;
+    gAir = createAirController(gConfig, airStorage, compositeStorage);
 
     static InstrumentController instrument(gConfig, keys, *gAir);
     gInstrument = &instrument;

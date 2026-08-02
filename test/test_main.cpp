@@ -21,6 +21,8 @@ void run_instrument_precharge_nonblocking();
 void run_instrument_transport_loss();
 void run_instrument_geometry();
 void run_air_module_end_to_end();
+void run_composite_air();
+void run_reservoir_regulator();
 void run_safety_i2c_fault();
 void run_safety_stuck_key();
 void run_safety_comm_timeout();
@@ -46,6 +48,8 @@ int main() {
     RUN(run_instrument_transport_loss);
     RUN(run_instrument_geometry);
     RUN(run_air_module_end_to_end);
+    RUN(run_composite_air);
+    RUN(run_reservoir_regulator);
     RUN(run_safety_i2c_fault);
     RUN(run_safety_stuck_key);
     RUN(run_safety_comm_timeout);
