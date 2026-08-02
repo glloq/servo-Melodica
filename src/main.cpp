@@ -25,6 +25,7 @@
 #include "ConfigStore.h"
 
 // --- Air module selection --------------------------------------------------
+#include "AirModuleConfig.h"        // AirModuleWiring (needed by all profiles)
 #include "SimulationAirController.h"
 #if !defined(AIR_SIMULATION)
 #include "HardwareAirControllers.h"
@@ -33,7 +34,13 @@
 // --- Transport selection ---------------------------------------------------
 #if defined(TRANSPORT_BLE)
 #include <BLEMIDI_Transport.h>
+// Define MELODICA_BLE_NIMBLE (and add the NimBLE-Arduino lib) to use the lighter
+// NimBLE stack instead of Bluedroid; both expose the same BLEMIDI_CREATE_INSTANCE.
+#if defined(MELODICA_BLE_NIMBLE)
+#include <hardware/BLEMIDI_ESP32_NimBLE.h>
+#else
 #include <hardware/BLEMIDI_ESP32.h>
+#endif
 #include "BleMidiTransport.h"
 BLEMIDI_CREATE_INSTANCE("Servo Melodica", MIDI);
 #elif defined(TRANSPORT_WIFI_RTP)
@@ -147,7 +154,9 @@ void setup() {
 #elif defined(TRANSPORT_USB)
     static UsbMidiTransport<decltype(MIDI)> transport(MIDI);
 #elif defined(TRANSPORT_SERIAL)
-    static SerialMidiTransport transport(Serial);
+    // Dedicated UART (Serial2, RX=16/TX=17) so MIDI never collides with the
+    // log/console on Serial.
+    static SerialMidiTransport transport(Serial2, 115200, 16, 17);
 #endif
     gTransport = &transport;
 
