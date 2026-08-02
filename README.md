@@ -1,318 +1,213 @@
-# 🎹 Servo-Melodica - Contrôleur MIDI Robotisé
+# Servo Melodica — unified ESP32 firmware
 
-Système robotisé pour contrôler un mélodica de 32 touches via MIDI, avec 3 options de connexion : **USB**, **Bluetooth** ou **WiFi**.
+A single, modular, testable firmware that drives a 32-key melodica with
+servo-actuated keys (via PCA9685 boards) and a configurable air supply. One
+source tree, many build profiles: each profile compiles exactly one MIDI
+transport and one air module around a **shared instrument core** — there is no
+duplicated business logic between the BLE, WiFi, USB, DIN or serial builds.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+> Replaces the previous five parallel sketches (`Servo_melodica`,
+> `Servo_melodica_Simple`, `Servo_melodica_ESP32_BLE`,
+> `Servo_melodica_ESP32_WiFi`, `Calibration_Manual`). See
+> [`MIGRATION.md`](MIGRATION.md).
 
----
+## Contents
 
-## 📋 Qu'est-ce que c'est ?
+- [Architecture](#architecture)
+- [Compatible boards](#compatible-boards)
+- [Transports](#transports)
+- [Air methods](#air-methods)
+- [Wiring](#wiring)
+- [Build profiles](#build-profiles-platformio)
+- [Calibration](#calibration)
+- [WiFi configuration](#wifi-configuration)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [Known limitations](#known-limitations)
+- [Migration](#migration)
 
-Un robot qui joue du mélodica en contrôlant :
-- **32 servos** pour appuyer sur les touches
-- **1 servo** pour contrôler le débit d'air (vélocité MIDI)
+## Architecture
 
-**3 versions disponibles** : USB (Arduino), Bluetooth (ESP32), WiFi (ESP32)
-
----
-
-## 🎯 Versions Disponibles
-
-| Version | Hardware | Connexion | Portée | Latence | Difficulté |
-|---------|----------|-----------|--------|---------|------------|
-| **[USB](#-version-usb-arduino)** | Arduino Mega/Leonardo | Câble USB | 5m | Minimale | ⭐ Simple |
-| **[Bluetooth](#-version-bluetooth-esp32)** | ESP32 | BLE-MIDI | 10-30m | Faible | ⭐⭐ Moyenne |
-| **[WiFi](#-version-wifi-esp32)** | ESP32 | RTP-MIDI | Réseau local | Faible | ⭐⭐ Moyenne |
-
----
-
-## 🔧 Matériel Commun (toutes versions)
-
-| Composant | Quantité | Notes |
-|-----------|----------|-------|
-| PCA9685 (I2C PWM) | 2 | Adresses 0x40 et 0x41 |
-| Servos SG90 | 33 | 32 touches + 1 air |
-| Alimentation 5V/10A | 1 | Pour les servos uniquement |
-| Mélodica 32 touches | 1 | Yamaha P-32D, Hohner, etc. |
-
----
-
-## 🎛️ Calibration (OBLIGATOIRE)
-
-**Avant d'utiliser le système, calibrer les servos :**
-
-### Outil : Calibration_Manual (recommandé)
-
-```bash
-1. Téléverser Calibration_Manual/Calibration_Manual.ino
-2. Ouvrir Serial Monitor (9600 bauds)
-3. Utiliser commandes clavier :
-   - p/n : Servo précédent/suivant
-   - +/- : Ajuster angle (1°)
-   - [/] : Ajuster angle (5°)
-   - i   : Inverser sens rotation
-   - t   : Tester noteOn/noteOff
-   - c   : Générer code pour settings.h
-4. Copier le code généré
-5. Coller dans le fichier settings.h de votre version
-6. Téléverser votre version
-```
-
-**Documentation** : [Calibration_Manual/README.md](Calibration_Manual/README.md)
-
----
-
-## 🔌 Version USB (Arduino)
-
-### Matériel supplémentaire
-- Arduino Mega ou Leonardo (USB MIDI natif)
-
-### Installation
-```bash
-1. Installer Arduino IDE
-2. Installer bibliothèques :
-   - Adafruit PWM Servo Driver Library
-   - MIDIUSB
-3. Ouvrir Servo_melodica_Simple/Servo_melodica_Simple.ino
-4. Calibrer servos (voir section Calibration)
-5. Téléverser sur Arduino
-6. Connecter via USB à votre ordinateur/DAW
-```
-
-### Avantages / Inconvénients
-✅ Latence minimale
-✅ Configuration simple
-✅ Connexion stable
-❌ Câble USB requis
-❌ Portée limitée (5m)
-
-**Documentation** : [Servo_melodica_Simple/README.md](Servo_melodica_Simple/README.md)
-
----
-
-## 📱 Version Bluetooth (ESP32)
-
-### Matériel supplémentaire
-- ESP32 DevKit (WROOM, DevKit v1, etc.)
-
-### Installation
-```bash
-1. Installer Arduino IDE + support ESP32
-2. Installer bibliothèques :
-   - ESP32-BLE-MIDI (by lathoub)
-   - Adafruit PWM Servo Driver Library
-   - ESP32Servo
-3. Ouvrir Servo_melodica_ESP32_BLE/Servo_melodica_ESP32_BLE.ino
-4. Calibrer servos (voir section Calibration)
-5. Téléverser sur ESP32
-6. Sur votre appareil :
-   - iOS : Ouvrir app MIDI → Connecter "Servo Melodica"
-   - macOS : Audio MIDI Setup → Bluetooth → "Servo Melodica"
-   - Windows : MIDIberry → Scanner → Connecter
-   - Android : MIDI+BTLE → Scanner → Connecter
-```
-
-### Connexions ESP32
-```
-GPIO 21 (SDA) → PCA9685 SDA
-GPIO 22 (SCL) → PCA9685 SCL
-GPIO 25       → Servo Air
-GPIO 26       → PIN_PCA_OFF
-```
-
-### Avantages / Inconvénients
-✅ Sans fil (10-30m)
-✅ Compatible iOS/macOS/Windows/Android
-✅ Setup simple
-❌ Latence légèrement supérieure
-❌ Interférences possibles
-
-**Documentation** : [Servo_melodica_ESP32_BLE/README.md](Servo_melodica_ESP32_BLE/README.md)
-
----
-
-## 🌐 Version WiFi (ESP32)
-
-### Matériel supplémentaire
-- ESP32 DevKit
-- Réseau WiFi 2.4 GHz
-
-### Installation
-```bash
-1. Installer Arduino IDE + support ESP32
-2. Installer bibliothèques :
-   - AppleMIDI (by lathoub)
-   - Adafruit PWM Servo Driver Library
-   - ESP32Servo
-3. Ouvrir Servo_melodica_ESP32_WiFi/Servo_melodica_ESP32_WiFi.ino
-4. Configurer WiFi dans settings.h :
-   #define WIFI_SSID "VotreSSID"
-   #define WIFI_PASSWORD "VotreMotDePasse"
-5. Calibrer servos (voir section Calibration)
-6. Téléverser sur ESP32
-7. Noter l'IP affichée dans Serial Monitor
-8. Connecter depuis votre ordinateur :
-   - macOS : Audio MIDI Setup → Network → "Servo Melodica"
-   - Windows : Installer rtpMIDI → Connecter "Servo Melodica"
-   - iOS : App compatible RTP-MIDI → Scanner réseau
-```
-
-### Connexions ESP32
-```
-GPIO 21 (SDA) → PCA9685 SDA
-GPIO 22 (SCL) → PCA9685 SCL
-GPIO 25       → Servo Air
-GPIO 26       → PIN_PCA_OFF
-```
-
-### Avantages / Inconvénients
-✅ Portée réseau local illimitée
-✅ Très stable
-✅ Protocole standard (RTP-MIDI)
-❌ Nécessite réseau WiFi
-❌ Configuration WiFi requise
-
-**Documentation** : [Servo_melodica_ESP32_WiFi/README.md](Servo_melodica_ESP32_WiFi/README.md)
-
----
-
-## 🎹 Utilisation (toutes versions)
-
-### Messages MIDI supportés
-
-| Message | Fonction |
-|---------|----------|
-| **Note On/Off** | Active/désactive touche + air |
-| **Velocity (1-127)** | Contrôle débit d'air (30° à 90°) |
-| **CC 7** | Volume master |
-| **CC 123** | All Notes Off (panic button) |
-| **CC 121** | Reset All Controllers |
-
-### Plage de notes
-```
-Notes MIDI : 65 (F3) à 96 (C6)
-32 notes chromatiques
-```
-
-### Architecture
-```
-Servos touches : Position ON/OFF fixe (pas de vélocité)
-Servo air      : Angle 30°-90° (vélocité MIDI)
-```
-
----
-
-## 📁 Structure du Projet
+The transport-agnostic, actuator-agnostic core (`lib/core`) owns all instrument
+logic: MIDI semantics, the note-state table, air-flow computation and the
+non-blocking air/key scheduler. Everything hardware-specific sits behind three
+interfaces — `IMidiTransport`, `IKeyDriver`, `IAirController` — so the same core
+runs unchanged on every profile and on a PC under unit test.
 
 ```
-servo-Melodica/
-│
-├── Servo_melodica/              # Version Arduino complète
-│   └── Avec AudioCalibration + EEPROM
-│
-├── Servo_melodica_Simple/       # ⭐ Version Arduino simple (USB)
-│   ├── settings.h               # Configuration angles + pins
-│   └── README.md
-│
-├── Servo_melodica_ESP32_BLE/    # ⭐ Version ESP32 Bluetooth
-│   ├── settings.h               # Configuration ESP32
-│   └── README.md
-│
-├── Servo_melodica_ESP32_WiFi/   # ⭐ Version ESP32 WiFi
-│   ├── settings.h               # Configuration WiFi + ESP32
-│   └── README.md
-│
-└── Calibration_Manual/          # ⭐ Outil de calibration
-    ├── Calibration_Manual.ino   # Serial Monitor (p, n, +, -, i, t, c)
-    └── README.md
+transport (BLE/WiFi/DIN/USB/Serial) → MidiEvent → InstrumentController
+                                                     ├── IKeyDriver     → Pca9685KeyDriver
+                                                     └── IAirController → one of 9 air modules
+SafetyManager supervises everything · ConfigStore (NVS) persists everything
 ```
 
----
+Full details in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
-## 🚀 Démarrage Rapide
+## Compatible boards
 
-### Option 1 : USB (Arduino) - Le plus simple
-```bash
-1. Calibrer servos (Calibration_Manual)
-2. Copier valeurs dans Servo_melodica_Simple/settings.h
-3. Upload sur Arduino
-4. Brancher USB → Jouer !
+| Board | Profile family | Native USB-MIDI | Notes |
+|-------|----------------|-----------------|-------|
+| ESP32 DevKit / WROOM (`esp32dev`) | BLE, WiFi, DIN | No | Classic ESP32, BLE + WiFi |
+| ESP32-S3 (`esp32-s3-devkitc-1`) | USB, BLE, WiFi | **Yes** | USB peripheral present |
+| ESP32-S2 | USB | **Yes** | USB peripheral present, no BLE |
+| Any host PC | `native_tests` | — | Runs the core under simulated drivers |
+
+Native USB-MIDI is compiled **only** for S2/S3 (`-DMELODICA_USB_MIDI`); the
+classic ESP32 has no device-mode USB and never builds that adapter.
+
+## Transports
+
+All behind `IMidiTransport`, one selected per profile:
+
+| Transport | Build flag | Library |
+|-----------|-----------|---------|
+| BLE-MIDI | `TRANSPORT_BLE` | `lathoub/BLE-MIDI` (NimBLE-capable) |
+| RTP-MIDI / AppleMIDI (WiFi) | `TRANSPORT_WIFI_RTP` | `lathoub/AppleMIDI` |
+| DIN MIDI (UART 31250) | `TRANSPORT_DIN` | none (built-in `MidiParser`) |
+| USB-MIDI (S2/S3) | `TRANSPORT_USB` | `Adafruit TinyUSB` |
+| Serial-from-Pi | `TRANSPORT_SERIAL` | none |
+
+Each transport supports a configurable filter: single channel, channel list,
+omni, transposition, note-range limits and note→servo remapping
+(`MidiFilterConfig`).
+
+## Air methods
+
+All behind `IAirController`, built on the shared `AirRamp` (threshold, min/max,
+attack/release ramps, precharge, inversion). One selected per profile:
+
+| Module | Build flag |
+|--------|-----------|
+| Proportional valve servo | `AIR_SERVO_VALVE` |
+| On/off solenoid | `AIR_SOLENOID` |
+| Stepped solenoids (flow stages) | `AIR_STEPPED_SOLENOID` |
+| DC blower/fan (PWM) | `AIR_BLOWER_PWM` |
+| DC pump + H-bridge (direction) | `AIR_PUMP_HBRIDGE` |
+| Proportional valve (PWM/DAC) | `AIR_PWM_VALVE` |
+| Stepper-driven bellows | `AIR_STEPPER_BELLOWS` |
+| Permanent external air (digital enable) | `AIR_EXTERNAL` |
+| Simulation (no actuator) | `AIR_SIMULATION` |
+
+### Air-flow policy
+
+`AirPolicy` selects how active notes become flow: `Fixed`, `MaximumVelocity`,
+`AverageVelocity`, `SumClamped`, `PolyphonyCompensated`. The demand folds in CC7
+(volume) and CC11 (expression); **an effective demand of zero fully closes the
+air**. Because the demand is recomputed on every note change, stopping the
+loudest note of a chord makes the flow fall automatically.
+
+## Wiring
+
+Summary below; full table in [`docs/WIRING.md`](docs/WIRING.md).
+
+| Signal | GPIO | Notes |
+|--------|------|-------|
+| I2C SDA / SCL | 21 / 22 | PCA9685 boards |
+| PCA OE (shared) | 27 | active-low output-disable (**not** a power cut) |
+| Air actuator | 13/14/27 | depends on selected module |
+| DIN RX / TX | 16 / 17 | via opto-isolator, 31250 baud |
+| Panic button | 0 | BOOT button, active-low |
+
+Key→board/channel: `driverIndex = key/16`, `channel = key%16` (16 channels/board).
+
+## Build profiles (PlatformIO)
+
+```ini
+esp32_ble_servo_air        # BLE  + proportional servo valve
+esp32_wifi_servo_air       # WiFi + proportional servo valve
+esp32_din_servo_air        # DIN  + proportional servo valve
+esp32_ble_pwm_blower       # BLE  + PWM blower
+esp32_wifi_digital_valve   # WiFi + on/off solenoid
+esp32_stepper_bellows      # BLE  + stepper bellows
+esp32s3_usb_servo_air      # S3 native USB + servo valve
+native_tests               # host unit tests
 ```
 
-### Option 2 : Bluetooth (ESP32) - Sans fil
-```bash
-1. Calibrer servos (Calibration_Manual)
-2. Copier valeurs dans Servo_melodica_ESP32_BLE/settings.h
-3. Upload sur ESP32
-4. Connecter Bluetooth → Jouer !
+Exact build commands:
+
+```sh
+pio run -e esp32_ble_servo_air          # build BLE + servo
+pio run -e esp32_wifi_servo_air         # build WiFi + servo
+pio run -e esp32_din_servo_air          # build DIN + servo
+pio run -e esp32_ble_pwm_blower         # build BLE + blower
+pio run -e esp32_wifi_digital_valve     # build WiFi + solenoid
+pio run -e esp32_stepper_bellows        # build BLE + stepper bellows
+pio run -e esp32s3_usb_servo_air        # build S3 USB + servo
+
+pio run -e esp32_ble_servo_air -t upload    # flash (append -t upload to any env)
+pio run -e esp32_ble_servo_air -t monitor   # serial monitor
 ```
 
-### Option 3 : WiFi (ESP32) - Portée maximale
-```bash
-1. Calibrer servos (Calibration_Manual)
-2. Copier valeurs dans Servo_melodica_ESP32_WiFi/settings.h
-3. Configurer WIFI_SSID et WIFI_PASSWORD
-4. Upload sur ESP32
-5. Connecter RTP-MIDI → Jouer !
+Dependency versions are pinned in `platformio.ini` for reproducible builds.
+
+## Calibration
+
+Calibration is **integrated** — no separate firmware. Open the serial monitor
+(115200 baud) and use the console (type `?` for help):
+
+```
+k <n>    select key n           r <us>   set rest pulse
+p <us>   set pressed pulse       lo <us>  set min limit
+hi <us>  set max limit           v        toggle inversion
+t        test selected key       ta       test all keys
+d        reset key to default     s        save to NVS
+x        export as C++            j        export as JSON
 ```
 
----
+Values are applied live, saved to NVS (`s`) without recompiling, and can be
+exported as C++ or JSON. Previous values are restored on reboot if you don't
+save. Legacy angle-based calibration migrates via `migrateLegacyKey()`.
 
-## 🔍 Dépannage Rapide
+## WiFi configuration
 
-### Servos ne bougent pas
-```
-✓ Vérifier alimentation 5V/10A externe
-✓ GND commun (Arduino/ESP32 + Alimentation)
-✓ Connexions I2C (SDA/SCL)
-✓ Adresses PCA9685 (0x40 et 0x41)
-```
+Credentials live **only in NVS**, never in git. Reconnection is a non-blocking
+state machine with exponential backoff; session loss triggers `allNotesOff()`
+and a safe air stop. See [`docs/WIFI.md`](docs/WIFI.md).
 
-### MIDI ne fonctionne pas
-```
-✓ USB : Vérifier périphérique MIDI détecté
-✓ BLE : Appareil Bluetooth compatible BLE-MIDI
-✓ WiFi : Même réseau + rtpMIDI (Windows) ou Audio MIDI Setup (Mac)
-```
+## Testing
 
-### Notes mal jouées
-```
-✓ Recalibrer avec Calibration_Manual
-✓ Ajuster ANGLE_NOTE_ON dans settings.h
-✓ Vérifier sens rotation (sensRot[] dans settings.h)
+The core compiles and runs on a PC with simulated drivers — no ESP32 needed:
+
+```sh
+./scripts/run_native_tests.sh          # g++, prints "N checks, 0 failures"
+# or, via PlatformIO:
+pio run -e native_tests && .pio/build/native_tests/program
 ```
 
----
+Covered cases include: PCA mapping for keys 0/15/16/31, out-of-range note
+rejection, Note-On velocity 0, CC7 = 0, multi-velocity chord, stopping the
+loudest note, sustain, All Notes Off, BLE/WiFi loss, WiFi reconnection, PCA I2C
+fault, non-blocking precharge, per-servo mechanical limits, and legacy
+calibration migration.
 
-## 📊 Comparaison Détaillée
+## Troubleshooting
 
-|  | USB Arduino | BLE ESP32 | WiFi ESP32 |
-|---|---|---|---|
-| **Setup** | ⭐⭐⭐ Simple | ⭐⭐ Moyen | ⭐⭐ Moyen |
-| **Latence** | ~2-5ms | ~10-20ms | ~10-30ms |
-| **Portée** | 5m (USB) | 10-30m | Illimitée (LAN) |
-| **Câble** | USB requis | Aucun | Aucun |
-| **Config** | Plug & Play | Plug & Play | WiFi requis |
-| **Stabilité** | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐ |
-| **Compatibilité** | PC/Mac/Linux | iOS/Mac/Win/Android | PC/Mac/iOS/Linux |
+| Symptom | Likely cause / fix |
+|---------|-------------------|
+| No keys move, log "I2C_FAULT" | Check PCA wiring/addresses; `SafetyManager` disabled outputs |
+| One board's keys dead | That board failed I2C probe; check its address jumpers |
+| Servos jitter when idle | Expected until idle-output-shedding drops OE; tune `idleDisableDelayMs` |
+| Air never opens | CC7 or CC11 is 0, or demand below `startThreshold` |
+| Air won't fully close | Check `airReleaseDelayMs`; CC7 = 0 must close immediately |
+| WiFi never connects | Credentials not set in NVS (see `docs/WIFI.md`); firmware keeps retrying |
+| Notes stuck after disconnect | Should not happen — loss triggers `allNotesOff`; check transport `connected()` |
+| A servo strains at travel end | Tighten that key's `minPulseUs`/`maxPulseUs` in calibration |
 
----
+Fault codes are consultable via `SafetyManager::faultText()`.
 
-## 📄 Licence
+## Known limitations
 
-MIT License - Libre d'utilisation, modification et distribution.
+- **True air anticipation** needs either added latency or the host sending
+  events early; the firmware provides scheduled precharge, not prediction.
+- Pitch bend and polyphonic aftertouch are accepted but not mechanically
+  realised (a melodica cannot bend a single key's pitch).
+- The stepper-bellows module uses simple constant-rate stepping (no acceleration
+  profile); adequate for slow bellows, not high-speed positioning.
+- Native USB-MIDI requires an S2/S3; the classic ESP32 cannot provide it.
 
----
+## Migration
 
-## 🎓 En Savoir Plus
-
-- **Calibration** : [Calibration_Manual/README.md](Calibration_Manual/README.md)
-- **Version USB** : [Servo_melodica_Simple/README.md](Servo_melodica_Simple/README.md)
-- **Version Bluetooth** : [Servo_melodica_ESP32_BLE/README.md](Servo_melodica_ESP32_BLE/README.md)
-- **Version WiFi** : [Servo_melodica_ESP32_WiFi/README.md](Servo_melodica_ESP32_WiFi/README.md)
-
----
-
-**Version** : 3.0.0
-**Status** : ✅ Production Ready
-**Date** : 2025-12-06
+See [`MIGRATION.md`](MIGRATION.md) for the per-file migration table and
+[`docs/DEFECTS_FIXED.md`](docs/DEFECTS_FIXED.md) for the corrected defects. The
+32-key count and the **C4 = MIDI 60** octave convention (lowest key F4 = 65,
+highest C7 = 96) are documented there.
