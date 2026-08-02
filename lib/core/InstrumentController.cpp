@@ -223,7 +223,7 @@ void InstrumentController::recomputeAir(uint32_t nowUs) {
             airHoldActive_ = true;
             airHoldUntilUs_ = nowUs + msToUs(config_.air.airReleaseDelayMs);
         }
-        if (nowUs < airHoldUntilUs_) {
+        if (static_cast<int32_t>(nowUs - airHoldUntilUs_) < 0) {
             demand_.activeNoteCount = 0;
             demand_.soundRequested = true;  // keep last expression flowing
         } else {
@@ -242,11 +242,14 @@ void InstrumentController::recomputeAir(uint32_t nowUs) {
 
 void InstrumentController::update(uint32_t nowUs) {
     for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
-        if (phase_[i] == KeyPhase::PendingPress && nowUs >= dueUs_[i]) {
+        // Wrap-safe deadline test: (int32_t)(now - due) >= 0 stays correct across
+        // the ~71-minute micros() rollover.
+        bool due = static_cast<int32_t>(nowUs - dueUs_[i]) >= 0;
+        if (phase_[i] == KeyPhase::PendingPress && due) {
             keys_.pressKey(i);
             notes_[i].physicallyActive = true;
             phase_[i] = KeyPhase::Down;
-        } else if (phase_[i] == KeyPhase::PendingRelease && nowUs >= dueUs_[i]) {
+        } else if (phase_[i] == KeyPhase::PendingRelease && due) {
             keys_.releaseKey(i);
             notes_[i].physicallyActive = false;
             phase_[i] = KeyPhase::Idle;
