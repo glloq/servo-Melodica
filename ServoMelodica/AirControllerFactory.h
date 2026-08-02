@@ -24,9 +24,13 @@
 #include "Config.h"
 #include "IAirController.h"
 #include "Log.h"
+#include "AirStages.h"
 #include "SimulationAirController.h"
 #if defined(AIR_ALL) || !defined(AIR_SIMULATION)
 #include "HardwareAirControllers.h"
+#endif
+#if defined(ARDUINO)
+#include "AirStages_ESP32.h"
 #endif
 
 namespace melodica {
@@ -37,17 +41,70 @@ struct alignas(16) AirControllerStorage {
     unsigned char bytes[320];
 };
 
-// Placement-new a module into the storage with a compile-time size check.
+// Storage for the four composite stages + the composite controller.
+struct CompositeAirStorage {
+    AirControllerStorage valve, flow, source, sensor, controller;
+};
+
+// Placement-new an object into a storage buffer with a compile-time size check.
 template <class T, class... Args>
-inline IAirController* placeAir(AirControllerStorage& s, Args&&... args) {
+inline T* placeIn(AirControllerStorage& s, Args&&... args) {
     static_assert(sizeof(T) <= sizeof(AirControllerStorage),
-                  "AirControllerStorage too small for this air module");
+                  "AirControllerStorage too small for this object");
     return new (s.bytes) T(static_cast<Args&&>(args)...);
 }
+template <class T, class... Args>
+inline IAirController* placeAir(AirControllerStorage& s, Args&&... args) {
+    return placeIn<T>(s, static_cast<Args&&>(args)...);
+}
+
+#if defined(ARDUINO)
+// Build a 4-stage composite air system from config (source -> valve -> flow +
+// optional sensor). Each stage is placement-new'd into its own static buffer.
+inline IAirController* buildComposite(const BoardConfig& cfg, CompositeAirStorage& s) {
+    const CompositeAirConfig& c = cfg.air.composite;
+    const uint32_t freq = cfg.air.pwmFrequencyHz;
+
+    IMainValve* valve;
+    if (c.mainValve == MainValveKind::Solenoid)
+        valve = placeIn<SolenoidMainValve>(s.valve, c.mainValvePin, c.mainValveActiveHigh);
+    else
+        valve = placeIn<PassthroughMainValve>(s.valve);
+
+    IFlowActuator* flow;
+    switch (c.flow) {
+        case FlowKind::Servo: flow = placeIn<ServoFlowActuator>(s.flow, c.flowPin); break;
+        case FlowKind::Pwm: flow = placeIn<PwmFlowActuator>(s.flow, c.flowPin, c.flowLedcChannel, freq); break;
+        case FlowKind::Dac: flow = placeIn<DacFlowActuator>(s.flow, c.flowPin); break;
+        default: flow = placeIn<NullFlowActuator>(s.flow); break;
+    }
+
+    IAirSource* source;
+    switch (c.source) {
+        case SourceKind::Blower: source = placeIn<BlowerSource>(s.source, c.sourcePwmPin, c.sourceLedcChannel, freq); break;
+        case SourceKind::Pump: source = placeIn<PumpSource>(s.source, c.sourcePwmPin, c.sourceDirPin, c.sourceLedcChannel, freq, c.sourceForward); break;
+        case SourceKind::Reservoir: source = placeIn<ReservoirSource>(s.source, c.sourcePwmPin, c.sourceLedcChannel, freq, c.targetPressure, c.pressureHysteresis); break;
+        default: source = placeIn<ExternalSource>(s.source, c.sourceEnablePin); break;
+    }
+
+    IPressureSensor* sensor = nullptr;
+    if (c.sensorEnabled)
+        sensor = placeIn<AnalogPressureSensor>(s.sensor, c.sensorPin, c.sensorMinRaw, c.sensorMaxRaw);
+
+    return placeIn<CompositeAirController>(s.controller, cfg.air, *valve, *flow, *source, sensor);
+}
+#endif  // ARDUINO
 
 inline IAirController* createAirController(const BoardConfig& cfg,
-                                           AirControllerStorage& storage) {
+                                           AirControllerStorage& storage,
+                                           CompositeAirStorage& composite) {
     const AirConfig& a = cfg.air;
+
+#if defined(ARDUINO)
+    if (a.type == AirSystemType::Composite) return buildComposite(cfg, composite);
+#else
+    (void)composite;
+#endif
 
 #if defined(AIR_ALL)
     // Full build: honour the runtime-selected type.

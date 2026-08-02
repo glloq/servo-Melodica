@@ -92,12 +92,15 @@ void setup() {
     gConfig = ConfigStore::load();
 
     // --- Key driver (PCA9685 x N) ---
-    static Pca9685KeyDriver keys(gConfig.i2c, gConfig.keyDriver, gConfig.keys);
+    static Pca9685KeyDriver keys(gConfig.i2c, gConfig.keyDriver, gConfig.keys,
+                                 gConfig.instrument.noteCount);
     gKeys = &keys;
 
-    // --- Air module: selected at RUNTIME from gConfig.air.type ---
+    // --- Air system: selected at RUNTIME from gConfig.air.type (incl. the
+    //     4-stage Composite: source -> main valve -> flow -> optional sensor) ---
     static AirControllerStorage airStorage;
-    gAir = createAirController(gConfig, airStorage);
+    static CompositeAirStorage compositeStorage;
+    gAir = createAirController(gConfig, airStorage, compositeStorage);
 
     static InstrumentController instrument(gConfig, keys, *gAir);
     gInstrument = &instrument;
@@ -130,7 +133,7 @@ void setup() {
     LOG_INFO("Transport: %s", transport.name());
 
 #if defined(MELODICA_WEB_CONFIG)
-    static WebConfigPortal portal(gConfig);
+    static WebConfigPortal portal(gConfig, &keys);
     gPortal = &portal;
     portal.begin();
     // No network credentials yet => bring up the setup hotspot automatically.

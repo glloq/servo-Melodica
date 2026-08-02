@@ -58,6 +58,14 @@ storage — no heap, not in the real-time path). The web UI / serial console cha
 that type in NVS and reboot to apply. A `-DAIR_<X>` build compiles only module X
 for a lean binary.
 
+The `Composite` type builds a 4-stage system (source → main valve → flow →
+optional sensor) from small interfaces in `AirStages.h`: `IMainValve`,
+`IFlowActuator`, `IAirSource`, `IPressureSensor`. `CompositeAirController` is pure
+orchestration logic (host-tested with mocks); the ESP32 actuators live in
+`AirStages_ESP32.h`, and `ReservoirRegulator` is a pure bang-bang controller for
+a pressure-regulated tank. Geometry (`InstrumentConfig.noteCount`,
+`firstMidiNote`) is runtime too, with arrays sized to the `MAX_NOTES = 64` cap.
+
 ## Data flow per loop iteration (non-blocking)
 
 1. `transport.update()` decodes wire bytes into a `MidiEvent` queue.

@@ -205,6 +205,25 @@ void run_instrument_precharge_nonblocking() {
     CHECK(keys.isPressed(0));
 }
 
+void run_instrument_geometry() {
+    // A 25-key melodica starting at MIDI 60 (C4), configured at runtime.
+    BoardConfig cfg = makeConfig();
+    cfg.instrument.noteCount = 25;
+    cfg.instrument.firstMidiNote = 60;
+    MockKeyDriver keys(MAX_NOTES);
+    MockAirController air;
+    InstrumentController inst(cfg, keys, air);
+    inst.begin();
+    CHECK_EQ(inst.keyCount(), 25);
+
+    inst.handleEvent(noteOn(60, 100, 0, 0));   // first key
+    CHECK(keys.isPressed(0));
+    inst.handleEvent(noteOn(84, 100, 0, 0));   // 60+24 = last key
+    CHECK(keys.isPressed(24));
+    CHECK(!inst.handleEvent(noteOn(85, 100, 0, 0)));  // one past the top
+    CHECK(!inst.handleEvent(noteOn(59, 100, 0, 0)));  // below the bottom
+}
+
 void run_instrument_transport_loss() {
     BoardConfig cfg = makeConfig();
     MockKeyDriver keys(NUMBER_OF_NOTES);

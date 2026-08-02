@@ -15,7 +15,7 @@ inline BoardConfig makeDefaultConfig() {
     // A profile may set the initial air-system type (still runtime-changeable).
     cfg.air.type = static_cast<AirSystemType>(DEFAULT_AIR_TYPE);
 #endif
-    for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+    for (uint16_t i = 0; i < MAX_NOTES; ++i) {
         cfg.keys[i].restPulseUs = 1500;
         cfg.keys[i].pressedPulseUs = 1900;
         cfg.keys[i].minPulseUs = 500;
@@ -26,11 +26,12 @@ inline BoardConfig makeDefaultConfig() {
 }
 
 // Compile-time guarantee that the calibration table has exactly one entry per
-// note. If NUMBER_OF_NOTES changes, any mismatched fixed table fails to build.
-static_assert(sizeof(BoardConfig::keys) / sizeof(KeyCalibration) == NUMBER_OF_NOTES,
-              "Key calibration table size must equal NUMBER_OF_NOTES");
-static_assert(NUMBER_OF_NOTES <= MAX_PCA_BOARDS * CHANNELS_PER_PCA9685,
-              "Not enough PCA9685 channels for the configured number of notes");
+// key slot, and that the hardware can address every slot.
+static_assert(sizeof(BoardConfig::keys) / sizeof(KeyCalibration) == MAX_NOTES,
+              "Key calibration table size must equal MAX_NOTES");
+static_assert(MAX_NOTES == MAX_PCA_BOARDS * CHANNELS_PER_PCA9685,
+              "MAX_NOTES must match the total PCA9685 channel count");
+static_assert(NUMBER_OF_NOTES <= MAX_NOTES, "default note count exceeds cap");
 
 }  // namespace melodica
 

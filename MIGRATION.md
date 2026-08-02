@@ -45,7 +45,9 @@ unit test in `test/test_keydriver.cpp`.
 ## Key/note count and octave convention
 
 The old code was inconsistent (titles said "16 notes", comments said "30
-servos", arrays were sized 32). The unified firmware standardises on **32 keys**.
+servos", arrays were sized 32). The unified firmware **defaults to 32 keys** but
+the key count and the lowest MIDI note are runtime-configurable (up to 64 keys /
+4 PCA9685) from the web UI — arrays are sized to the `MAX_NOTES = 64` cap.
 
 - `NUMBER_OF_NOTES = 32`, `FIRST_MIDI_NOTE = 65`.
 - Octave naming uses the **C4 = MIDI 60** convention (middle C = C4). Therefore

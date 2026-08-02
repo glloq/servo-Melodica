@@ -11,7 +11,13 @@ constexpr uint32_t msToUs(uint16_t ms) { return static_cast<uint32_t>(ms) * 1000
 
 InstrumentController::InstrumentController(const BoardConfig& config, IKeyDriver& keys,
                                           IAirController& air)
-    : config_(config), keys_(keys), air_(air), filter_(config.midi) {}
+    : config_(config),
+      keys_(keys),
+      air_(air),
+      filter_(config.midi),
+      noteCount_(config.instrument.noteCount > MAX_NOTES ? MAX_NOTES
+                                                         : config.instrument.noteCount),
+      firstMidiNote_(config.instrument.firstMidiNote) {}
 
 bool InstrumentController::begin() {
     bool keysOk = keys_.begin();
@@ -26,9 +32,9 @@ bool InstrumentController::begin() {
 }
 
 int32_t InstrumentController::keyIndexForNote(uint8_t midiNote) const {
-    if (midiNote < FIRST_MIDI_NOTE) return -1;
-    uint16_t idx = static_cast<uint16_t>(midiNote - FIRST_MIDI_NOTE);
-    if (idx >= NUMBER_OF_NOTES) return -1;
+    if (midiNote < firstMidiNote_) return -1;
+    uint16_t idx = static_cast<uint16_t>(midiNote - firstMidiNote_);
+    if (idx >= noteCount_) return -1;
     return static_cast<int32_t>(idx);
 }
 
@@ -95,7 +101,7 @@ bool InstrumentController::handleEvent(const MidiEvent& event) {
                     bool on = event.data2 >= 64;
                     if (sustainPedal_ && !on) {
                         // Pedal released: drop keys held only by sustain.
-                        for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+                        for (uint16_t i = 0; i < noteCount_; ++i) {
                             if (notes_[i].sustained && channelMask_[i] == 0) {
                                 notes_[i].sustained = false;
                                 notes_[i].keyPressed = false;
@@ -194,10 +200,10 @@ void InstrumentController::scheduleKeyUp(uint16_t idx, uint32_t nowUs) {
 }
 
 void InstrumentController::recomputeAir(uint32_t nowUs) {
-    uint8_t vel[NUMBER_OF_NOTES];
+    uint8_t vel[MAX_NOTES];
     uint8_t count = 0;
     uint8_t maxv = 0;
-    for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+    for (uint16_t i = 0; i < noteCount_; ++i) {
         if (desired(i)) {
             vel[count++] = notes_[i].velocity;
             if (notes_[i].velocity > maxv) maxv = notes_[i].velocity;
@@ -241,7 +247,7 @@ void InstrumentController::recomputeAir(uint32_t nowUs) {
 }
 
 void InstrumentController::update(uint32_t nowUs) {
-    for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+    for (uint16_t i = 0; i < noteCount_; ++i) {
         // Wrap-safe deadline test: (int32_t)(now - due) >= 0 stays correct across
         // the ~71-minute micros() rollover.
         bool due = static_cast<int32_t>(nowUs - dueUs_[i]) >= 0;
@@ -266,7 +272,7 @@ void InstrumentController::update(uint32_t nowUs) {
 void InstrumentController::allNotesOff(uint32_t nowUs) {
     (void)nowUs;
     LOG_INFO("All Notes Off");
-    for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+    for (uint16_t i = 0; i < noteCount_; ++i) {
         channelMask_[i] = 0;
         notes_[i].keyPressed = false;
         notes_[i].sustained = false;
@@ -285,7 +291,7 @@ void InstrumentController::allNotesOff(uint32_t nowUs) {
 void InstrumentController::allSoundOff(uint32_t nowUs) {
     (void)nowUs;
     LOG_INFO("All Sound Off");
-    for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+    for (uint16_t i = 0; i < noteCount_; ++i) {
         channelMask_[i] = 0;
         notes_[i].keyPressed = false;
         notes_[i].sustained = false;
