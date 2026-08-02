@@ -1,48 +1,62 @@
 # Architecture
 
 ```
-                         MIDI wire (BLE / WiFi / DIN / USB / Serial)
-                                        │
-                          ┌─────────────┴──────────────┐
-                          │        IMidiTransport        │   adapters in lib/transports
-                          │  BLE · RTP · DIN · USB · Ser │   (decode → MidiEvent queue)
-                          └─────────────┬──────────────┘
-                                        │  MidiEvent (common struct)
-                                        ▼
-   ┌───────────────────────────────────────────────────────────────────────┐
-   │                        InstrumentController  (lib/core)                 │
-   │  MidiFilter → NoteState table → air demand (AirPolicy) → schedulers     │
-   │  transport-agnostic · actuator-agnostic · no BLE/WiFi/USB includes      │
-   └───────────────┬───────────────────────────────────┬───────────────────┘
-                   │ IKeyDriver                          │ IAirController
-                   ▼                                     ▼
-        ┌────────────────────┐                ┌────────────────────────────┐
-        │ Pca9685KeyDriver   │                │ one of 9 air modules        │
-        │ (lib/drivers_key)  │                │ (lib/drivers_air) on AirRamp │
-        └────────────────────┘                └────────────────────────────┘
+        MIDI wire (BLE / WiFi / DIN / USB / Serial)
+                        │
+                        ▼
+   IMidiTransport adapters  ──decode──►  MidiEvent (common struct)
+                        │
+                        ▼
+   ┌───────────────────────────────────────────────────────────────┐
+   │                     InstrumentController                       │
+   │  MidiFilter → NoteState table → air demand (AirPolicy) → sched │
+   │  transport-agnostic · actuator-agnostic · no BLE/WiFi includes │
+   └───────────────┬─────────────────────────────┬─────────────────┘
+                   │ IKeyDriver                    │ IAirController
+                   ▼                               ▼
+        ┌────────────────────┐        ┌────────────────────────────┐
+        │  Pca9685KeyDriver  │        │  one of 9 air modules       │
+        │                    │        │  (via AirControllerFactory) │
+        └────────────────────┘        └────────────────────────────┘
 
-        SafetyManager supervises the core, key driver and air module and forces a
-        safe state on any critical fault. ConfigStore (NVS) persists everything.
+   SafetyManager supervises the core, key driver and air module and forces a
+   safe state on any critical fault. ConfigStore (NVS) persists everything;
+   WebConfigPortal (WiFi builds) exposes it all over a browser + setup hotspot.
 ```
 
 ## Layers
 
-- **`lib/core/`** — platform-independent, host-compilable. No Arduino, BLE, WiFi,
-  USB or vendor headers. This is the only place the instrument logic lives.
+All firmware files live flat in `ServoMelodica/` (an Arduino sketch folder), so
+the same tree builds in the Arduino IDE and PlatformIO. Files are grouped here by
+role, not by directory:
+
+- **Core** — platform-independent, host-compilable. No Arduino, BLE, WiFi, USB or
+  vendor headers. This is the only place the instrument logic lives.
   - `MidiEvent`, `IMidiTransport`, `IKeyDriver`, `IAirController` — the contracts.
   - `InstrumentController` — note engine + air-demand + non-blocking scheduler.
   - `AirPolicy`, `AirRamp` — flow computation and actuator shaping.
   - `MidiFilter`, `MidiParser`, `EventQueue` — MIDI plumbing.
   - `ConnectionManager` — non-blocking reconnection with exponential backoff.
   - `SafetyManager` — watchdogs + safe-state enforcement.
-  - `Config`, `Defaults`, `Calibration`, `KeyPulse` — configuration + maths.
-- **`lib/drivers_key/`** — `Pca9685KeyDriver` (the reference `IKeyDriver`).
-- **`lib/drivers_air/`** — nine `IAirController` modules on a shared `AirRamp`.
-- **`lib/transports/`** — five `IMidiTransport` adapters.
-- **`lib/platform/`** — ESP32-specific NVS store and serial calibration console.
-- **`src/main.cpp`** — the composition root: picks one transport and one air
-  module by build flag and wires everything together with static objects.
+  - `Config`, `Defaults`, `Calibration`, `KeyPulse`, `UserConfig` — config + maths.
+- **Key driver** — `Pca9685KeyDriver` (the reference `IKeyDriver`).
+- **Air modules** — nine `IAirController` modules on a shared `AirRamp`, plus
+  `AirControllerFactory` which placement-news the runtime-selected module.
+- **Transports** — five `IMidiTransport` adapters (BLE, RTP, DIN, USB, serial).
+- **Platform** — ESP32 NVS store (`ConfigStore`), serial `CalibrationConsole`,
+  and `WebConfigPortal` (web UI + captive hotspot, WiFi builds only).
+- **`ServoMelodica.ino`** — the composition root: picks one transport by build
+  flag / `UserConfig.h`, builds the runtime-selected air module, and wires
+  everything with static objects (no heap).
 - **`test/`** — host unit tests using simulated drivers.
+
+## Air-module selection (compile-time vs runtime)
+
+Every air module is compiled in by default; `AirControllerFactory` constructs the
+one named by `BoardConfig::air.type` at `setup()` (placement-new into static
+storage — no heap, not in the real-time path). The web UI / serial console change
+that type in NVS and reboot to apply. A `-DAIR_<X>` build compiles only module X
+for a lean binary.
 
 ## Data flow per loop iteration (non-blocking)
 
