@@ -98,6 +98,30 @@ runtime** from the stored config (web UI or serial console) — a single binary
 drives any air system. A PlatformIO profile that sets a `-DAIR_<X>` flag trims
 the binary to that one module.
 
+### Composite (multi-stage) air system
+
+For real melodica builds the air path is usually more than one actuator. The
+**Composite** air type builds the system from four independently configurable
+stages, so e.g. *a solenoid main valve + a servo "servoflow" fed by a blower*
+is just a configuration — no code change:
+
+```
+Source ──► Main valve ──► Flow ──► melodica keys (servos on up to 4 PCA9685)
+  ▲
+Pressure sensor (optional, regulates a reservoir source)
+```
+
+| Stage | Options |
+|-------|---------|
+| **Main valve** | Solenoid (on/off) · None (pass-through) |
+| **Flow** ("servoflow") | Servo · PWM · DAC · None |
+| **Source** | Blower/fan · Pump (H-bridge) · Reservoir (pressure-regulated) · External air |
+| **Sensor** | Optional analog pressure sensor; a reservoir source is kept at a target pressure by bang-bang regulation |
+
+Every stage, its pins, and the sensor calibration/target are set in the web UI.
+The keys themselves are the up-to-64 servos across up to four PCA9685 boards
+(`driverIndex = key/16`, `channel = key%16`).
+
 ### Air-flow policy
 
 `AirPolicy` selects how active notes become flow: `Fixed`, `MaximumVelocity`,
@@ -174,9 +198,18 @@ Dependency versions are pinned in `platformio.ini` for reproducible builds.
 
 ## Configuration (web UI & hotspot)
 
-On **WiFi profiles**, everything is configurable from a browser — network
-credentials, MIDI filter (channel/transpose/range), the **air-system type and all
-its parameters and pins**, and per-key calibration — then saved to NVS.
+On **WiFi profiles**, everything is configurable from a browser — so any melodica
+can be set up without editing code:
+
+- **Melodica geometry**: number of keys (up to 64) and lowest MIDI note.
+- **I2C / PCA9685**: board count (1–4), I2C addresses, SDA/SCL and OE pins.
+- **Air system**: the type, all parameters and pins — including the full
+  **composite** stack (main valve, servoflow, source, pressure sensor/reservoir).
+- **MIDI**: channel filter, transposition, note range.
+- **Per-key calibration** with live **Press/Release** test buttons that move the
+  selected servo so you can dial in rest/pressed positions by eye.
+
+Everything is saved to NVS.
 
 **Reaching the page**
 
