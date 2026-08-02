@@ -133,7 +133,7 @@ void setup() {
     LOG_INFO("Transport: %s", transport.name());
 
 #if defined(MELODICA_WEB_CONFIG)
-    static WebConfigPortal portal(gConfig);
+    static WebConfigPortal portal(gConfig, &keys);
     gPortal = &portal;
     portal.begin();
     // No network credentials yet => bring up the setup hotspot automatically.
