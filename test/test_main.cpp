@@ -19,6 +19,7 @@ void run_instrument_all_notes_off();
 void run_instrument_multichannel();
 void run_instrument_precharge_nonblocking();
 void run_instrument_transport_loss();
+void run_instrument_geometry();
 void run_air_module_end_to_end();
 void run_safety_i2c_fault();
 void run_safety_stuck_key();
@@ -43,6 +44,7 @@ int main() {
     RUN(run_instrument_multichannel);
     RUN(run_instrument_precharge_nonblocking);
     RUN(run_instrument_transport_loss);
+    RUN(run_instrument_geometry);
     RUN(run_air_module_end_to_end);
     RUN(run_safety_i2c_fault);
     RUN(run_safety_stuck_key);

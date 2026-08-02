@@ -10,11 +10,18 @@ namespace melodica {
 // ---------------------------------------------------------------------------
 // Instrument dimensions
 // ---------------------------------------------------------------------------
-// The melodica has 32 playable keys spanning F3..? — see docs for the octave
-// convention. FIRST_MIDI_NOTE is the lowest key. All array sizes derive from
-// NUMBER_OF_NOTES so there is a single source of truth.
-constexpr uint16_t NUMBER_OF_NOTES = 32;
-constexpr uint8_t FIRST_MIDI_NOTE = 65;  // F4 (see README octave-naming note)
+// Arrays are sized to MAX_NOTES (the hardware cap: 4 PCA9685 * 16 = 64 keys) so
+// any melodica up to that size is supported without recompiling. The ACTUAL key
+// count and the lowest MIDI note are runtime settings (InstrumentConfig, stored
+// in NVS, editable from the web UI). NUMBER_OF_NOTES is the compiled default.
+constexpr uint16_t MAX_NOTES = 64;
+constexpr uint16_t NUMBER_OF_NOTES = 32;  // default key count
+constexpr uint8_t FIRST_MIDI_NOTE = 65;   // default lowest key = F4 (see README)
+
+struct InstrumentConfig {
+    uint8_t noteCount = NUMBER_OF_NOTES;    // number of playable keys (<= MAX_NOTES)
+    uint8_t firstMidiNote = FIRST_MIDI_NOTE;  // MIDI number of the lowest key
+};
 
 // ---------------------------------------------------------------------------
 // Per-key mechanical calibration
@@ -153,17 +160,18 @@ struct SafetyConfig {
 // ---------------------------------------------------------------------------
 // Persisted, versioned root config
 // ---------------------------------------------------------------------------
-constexpr uint16_t CONFIG_SCHEMA_VERSION = 1;
+constexpr uint16_t CONFIG_SCHEMA_VERSION = 2;  // bumped: geometry + composite air
 
 struct BoardConfig {
     uint16_t schemaVersion = CONFIG_SCHEMA_VERSION;
+    InstrumentConfig instrument;
     I2cConfig i2c;
     KeyDriverConfig keyDriver;
     AirConfig air;
     MidiFilterConfig midi;
     NetworkConfig network;
     SafetyConfig safety;
-    KeyCalibration keys[NUMBER_OF_NOTES];
+    KeyCalibration keys[MAX_NOTES];  // sized to the cap; instrument.noteCount used
     uint32_t crc32 = 0;  // integrity check, computed over everything above
 };
 

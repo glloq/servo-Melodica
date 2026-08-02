@@ -26,13 +26,16 @@ namespace melodica {
 class Pca9685KeyDriver : public IKeyDriver {
 public:
     Pca9685KeyDriver(const I2cConfig& i2c, const KeyDriverConfig& cfg,
-                     const KeyCalibration (&calib)[NUMBER_OF_NOTES])
-        : i2c_(i2c), cfg_(cfg), calib_(calib) {
+                     const KeyCalibration (&calib)[MAX_NOTES], uint16_t keyCount)
+        : i2c_(i2c),
+          cfg_(cfg),
+          calib_(calib),
+          keyCount_(keyCount > MAX_NOTES ? MAX_NOTES : keyCount) {
         for (uint8_t b = 0; b < MAX_PCA_BOARDS; ++b) {
             boards_[b] = Adafruit_PWMServoDriver(cfg.addresses[b]);
             boardOk_[b] = false;
         }
-        for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+        for (uint16_t i = 0; i < keyCount_; ++i) {
             targetPulse_[i] = keyTargetPulseUs(calib_[i], false);
             currentPulse_[i] = targetPulse_[i];
         }
@@ -63,20 +66,20 @@ public:
             boardOk_[b] = true;
         }
         // Command all keys to their rest position.
-        for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) writePulse(i, currentPulse_[i]);
+        for (uint16_t i = 0; i < keyCount_; ++i) writePulse(i, currentPulse_[i]);
         return allHealthy_;
     }
 
-    uint16_t keyCount() const override { return NUMBER_OF_NOTES; }
+    uint16_t keyCount() const override { return keyCount_; }
 
     void pressKey(uint16_t i) override {
-        if (i < NUMBER_OF_NOTES) targetPulse_[i] = keyTargetPulseUs(calib_[i], true);
+        if (i < keyCount_) targetPulse_[i] = keyTargetPulseUs(calib_[i], true);
     }
     void releaseKey(uint16_t i) override {
-        if (i < NUMBER_OF_NOTES) targetPulse_[i] = keyTargetPulseUs(calib_[i], false);
+        if (i < keyCount_) targetPulse_[i] = keyTargetPulseUs(calib_[i], false);
     }
     void releaseAll() override {
-        for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+        for (uint16_t i = 0; i < keyCount_; ++i) {
             targetPulse_[i] = keyTargetPulseUs(calib_[i], false);
             currentPulse_[i] = targetPulse_[i];
             writePulse(i, currentPulse_[i]);
@@ -86,7 +89,7 @@ public:
     void update(uint32_t nowUs) override {
         if (cfg_.slewUsPerMs == 0) {
             // Instant move: only write when the target changed.
-            for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+            for (uint16_t i = 0; i < keyCount_; ++i) {
                 if (currentPulse_[i] != targetPulse_[i]) {
                     currentPulse_[i] = targetPulse_[i];
                     writePulse(i, currentPulse_[i]);
@@ -99,7 +102,7 @@ public:
         lastUpdateUs_ = nowUs;
         if (dtMs == 0) return;
         uint16_t step = static_cast<uint16_t>(cfg_.slewUsPerMs * dtMs);
-        for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+        for (uint16_t i = 0; i < keyCount_; ++i) {
             if (currentPulse_[i] == targetPulse_[i]) continue;
             if (currentPulse_[i] < targetPulse_[i]) {
                 currentPulse_[i] = (targetPulse_[i] - currentPulse_[i] <= step)
@@ -134,12 +137,13 @@ private:
 
     I2cConfig i2c_;
     KeyDriverConfig cfg_;
-    const KeyCalibration (&calib_)[NUMBER_OF_NOTES];
+    const KeyCalibration (&calib_)[MAX_NOTES];
     Adafruit_PWMServoDriver boards_[MAX_PCA_BOARDS];
     bool boardOk_[MAX_PCA_BOARDS];
     bool allHealthy_ = false;
-    uint16_t targetPulse_[NUMBER_OF_NOTES];
-    uint16_t currentPulse_[NUMBER_OF_NOTES];
+    uint16_t targetPulse_[MAX_NOTES];
+    uint16_t currentPulse_[MAX_NOTES];
+    uint16_t keyCount_;
     uint32_t lastUpdateUs_ = 0;
 };
 

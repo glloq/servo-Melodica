@@ -48,6 +48,7 @@ public:
     const NoteState& note(uint16_t index) const { return notes_[index]; }
     const AirDemand& currentDemand() const { return demand_; }
     uint8_t activeKeyCount() const { return activeCount_; }
+    uint16_t keyCount() const { return noteCount_; }
     MidiFilter& filter() { return filter_; }
     uint8_t volume() const { return volumeCc7_; }
     uint8_t expression() const { return expressionCc11_; }
@@ -67,13 +68,17 @@ private:
     IAirController& air_;
     MidiFilter filter_;
 
-    NoteState notes_[NUMBER_OF_NOTES];
-    uint16_t channelMask_[NUMBER_OF_NOTES] = {0};  // per-note holding-channel bits
+    // Runtime geometry (arrays sized to the compile-time cap MAX_NOTES).
+    const uint16_t noteCount_;
+    const uint8_t firstMidiNote_;
+
+    NoteState notes_[MAX_NOTES];
+    uint16_t channelMask_[MAX_NOTES] = {0};  // per-note holding-channel bits
 
     // Per-key non-blocking scheduling.
     enum class KeyPhase : uint8_t { Idle, PendingPress, Down, PendingRelease };
-    KeyPhase phase_[NUMBER_OF_NOTES] = {KeyPhase::Idle};
-    uint32_t dueUs_[NUMBER_OF_NOTES] = {0};
+    KeyPhase phase_[MAX_NOTES] = {KeyPhase::Idle};
+    uint32_t dueUs_[MAX_NOTES] = {0};
 
     uint8_t volumeCc7_ = 127;
     uint8_t expressionCc11_ = 127;

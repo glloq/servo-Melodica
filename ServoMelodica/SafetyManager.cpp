@@ -51,7 +51,7 @@ void SafetyManager::update(uint32_t nowUs, bool connected) {
     }
 
     // --- Stuck-key watchdog. ---
-    for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+    for (uint16_t i = 0; i < instrument_.keyCount(); ++i) {
         const NoteState& n = instrument_.note(i);
         if (n.physicallyActive &&
             (nowUs - n.startedAtUs) > msToUs(config_.maxKeyHoldMs)) {

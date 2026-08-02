@@ -92,7 +92,8 @@ void setup() {
     gConfig = ConfigStore::load();
 
     // --- Key driver (PCA9685 x N) ---
-    static Pca9685KeyDriver keys(gConfig.i2c, gConfig.keyDriver, gConfig.keys);
+    static Pca9685KeyDriver keys(gConfig.i2c, gConfig.keyDriver, gConfig.keys,
+                                 gConfig.instrument.noteCount);
     gKeys = &keys;
 
     // --- Air module: selected at RUNTIME from gConfig.air.type ---
