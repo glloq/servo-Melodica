@@ -107,6 +107,20 @@ panic button** (short press → release all keys & close air).
 
 No code editing needed — set up any melodica from a phone or laptop:
 
+<p align="center">
+  <img src="docs/images/web-config-top.png" alt="Servo Melodica web config — Network, MIDI, geometry and I2C sections" width="600">
+</p>
+
+<details>
+<summary>📱 See the whole page (one scroll: network, MIDI, air system, composite stages, calibration)</summary>
+
+<p align="center">
+  <img src="docs/images/web-config-full.png" alt="Full Servo Melodica web configuration page" width="360">
+</p>
+
+</details>
+
+
 - **Melodica geometry** — number of keys (up to 64) and the lowest MIDI note.
 - **I2C / PCA9685** — board count (1–4), addresses, SDA/SCL and OE pins.
 - **Air system** — type, all parameters and pins, including the full composite
