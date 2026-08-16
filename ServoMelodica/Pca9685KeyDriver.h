@@ -153,6 +153,15 @@ private:
 
         Wire.beginTransmission(cfg_.addresses[b]);
         bool answering = (Wire.endTransmission() == 0);
+        // Two strikes: one missed ACK (bus noise, a collision with a servo
+        // current spike) must not stop a performance, but a board that is really
+        // gone fails every probe and is declared lost on the second one.
+        if (!answering) {
+            if (missed_[b] < 2) ++missed_[b];
+            if (missed_[b] < 2) return;  // give it one more interval
+        } else {
+            missed_[b] = 0;
+        }
         if (answering && !boardOk_[b]) {
             // Board is back: re-init it and restore its keys.
             boards_[b].begin();
@@ -190,6 +199,7 @@ private:
     uint32_t lastUpdateUs_ = 0;
     uint32_t lastProbeUs_ = 0;
     uint8_t probeIndex_ = 0;
+    uint8_t missed_[MAX_PCA_BOARDS] = {0};
 };
 
 }  // namespace melodica
