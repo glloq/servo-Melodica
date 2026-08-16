@@ -38,6 +38,11 @@ private:
 // Apply it at runtime when the library version exposes a setter, and say so in
 // the log when it does not, instead of leaving a control that quietly does
 // nothing.
+//
+// Applied before the session is advertised, so invitations carry the chosen
+// name. (AppleMIDI keeps the name unless the sketch defines NO_SESSION_NAME to
+// save 100 bytes — with that define the library's own setter is a no-op and the
+// instrument keeps its built-in name.)
 template <typename T>
 inline auto applySessionName(T& session, const char* name, int)
     -> decltype(session.setName(name), void()) {
