@@ -7,6 +7,7 @@
 // the classic ESP32 (which has no device-mode USB).
 #if defined(ARDUINO) && defined(MELODICA_USB_MIDI)
 
+#include <Adafruit_TinyUSB.h>
 #include <Arduino.h>
 
 #include "EventQueue.h"
@@ -16,6 +17,13 @@ namespace melodica {
 
 // Adapter over an Arduino-MIDI interface bound to a TinyUSB MIDI device. Same
 // static-trampoline pattern as the BLE adapter.
+//
+// connected() reflects the REAL USB device state, not a constant: the device is
+// only usable while it is enumerated (mounted) by a host and not suspended.
+// Unplugging the cable clears tud_mounted(), the host putting the bus to sleep
+// sets tud_suspended() — either way the instrument sees the link drop and
+// releases whatever it was holding instead of leaving a key pressed until the
+// stuck-key watchdog fires 30 s later.
 template <typename MidiType>
 class UsbMidiTransport : public IMidiTransport {
 public:
@@ -31,13 +39,24 @@ public:
         return true;
     }
 
-    void update() override { midi_.read(); }
+    void update() override {
+        if (!hostPresent()) return;  // nothing to pump while unplugged/suspended
+        midi_.read();
+    }
     bool read(MidiEvent& event) override { return queue_.pop(event); }
-    // USB-MIDI has no session concept; treat an enumerated device as connected.
-    bool connected() const override { return true; }
+
+    // Connected == enumerated by a host AND not suspended.
+    bool connected() const override { return hostPresent(); }
+
     const char* name() const override { return "USB-MIDI"; }
 
 private:
+    // TinyUSB device state. mounted() goes false the moment the cable is pulled
+    // or the host resets the bus; suspended() covers host sleep.
+    static bool hostPresent() {
+        return TinyUSBDevice.mounted() && !TinyUSBDevice.suspended();
+    }
+
     static void push(const MidiEvent& e) { if (self_) self_->queue_.push(e); }
     static void onNoteOn(byte ch, byte n, byte v) {
         MidiEvent e; e.type = MidiEventType::NoteOn; e.channel = ch - 1;

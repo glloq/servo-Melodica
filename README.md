@@ -97,9 +97,31 @@ Up to **64 servo-driven keys** across up to four PCA9685 boards
 
 ### 🛡️ Safe by design
 
-A `SafetyManager` watches everything: an I2C fault disables outputs, losing your
-MIDI connection releases all keys and stops the air, and the **BOOT button is a
-panic button** (short press → release all keys & close air).
+A `SafetyManager` watches everything and forces the same safe state on any
+critical fault — release every key, close the air, disable the servo outputs,
+latch a readable fault code:
+
+| Watchdog | Trips when |
+|----------|-----------|
+| I2C health | a PCA9685 stops answering — re-probed continuously, not just at boot |
+| Transport loss | the MIDI link really drops (a held note is **not** a dropped link) |
+| Comm timeout | no MIDI and no link while notes are still down |
+| Stuck key | a key stays down longer than `maxKeyHoldMs` |
+| **Pump overrun** | a pump/blower runs longer than `maxPumpRunMs` without a break |
+| **Air not initialised** | an air module refuses to run (bad pin, reservoir with no sensor) |
+| **Emergency stop** | a dedicated input changes state — acted on immediately |
+
+**Wire a real emergency stop.** The BOOT button is a *configuration* control
+(short press = local panic, long press = setup hotspot). For mechanical safety
+set `safety.panicPin` in the web UI and use a normally-closed button to GND with
+*"stop when HIGH"*: pressing it **or cutting the wire** stops the instrument.
+See [`docs/WIRING.md`](docs/WIRING.md).
+
+**Nothing impossible gets saved.** Every configuration is validated against the
+chip before it is stored — 37 keys on two PCA9685 boards, a solenoid on the
+input-only GPIO34, a DAC valve on a pin with no DAC, one GPIO wired to two jobs,
+or a regulated reservoir with no pressure sensor are refused with an explanation,
+not silently accepted.
 
 ---
 
@@ -121,13 +143,24 @@ No code editing needed — set up any melodica from a phone or laptop:
 </details>
 
 
+- **Live status** — what the instrument is doing, and why it stopped: fault code,
+  transport link, active keys, air duty, I2C health, IP and uptime. With a remote
+  **STOP** and a **Clear fault** button.
 - **Melodica geometry** — number of keys (up to 64) and the lowest MIDI note.
-- **I2C / PCA9685** — board count (1–4), addresses, SDA/SCL and OE pins.
-- **Air system** — type, all parameters and pins, including the full composite
-  stack and pressure sensor.
-- **MIDI** — channel filter, transposition, note range.
-- **Per-key calibration** — with live **Press / Release** buttons that move the
-  servo so you can set rest/pressed positions by eye.
+- **I2C / PCA9685** — board count (1–4), addresses, SDA/SCL and OE pins, I2C
+  clock, servo PWM frequency, **servo speed** (slew rate) and the I2C health-check
+  interval.
+- **Air system** — type, all parameters and pins, LEDC channel/resolution,
+  solenoid stage pins, including the full composite stack and pressure sensor.
+- **MIDI** — channel mode with **16 per-channel checkboxes** for the channel
+  list, transposition, note range.
+- **Safety** — every watchdog limit, plus the emergency-stop pin and its polarity.
+- **Per-key calibration** — for **all** keys (0–63, not just the first 32), with
+  the real stored values loaded when you pick a key, and live **Press / Release**
+  buttons that move the servo so you can set rest/pressed positions by eye.
+
+Anything the hardware cannot honour is listed at the top of the page before you
+save, and saving is refused until you fix it (or explicitly choose *Save anyway*).
 
 Everything saves to the device (NVS). Saving reboots to apply — **never a
 recompile.**
@@ -158,6 +191,7 @@ hi <us>  set max limit           v        toggle inversion
 t        test selected key       ta       test all keys
 d        reset key to default    s        save to device
 x        export as C++           j        export as JSON
+val      check the config        reboot   restart the board
 ```
 
 Changes apply live, save without recompiling, and export as C++ or JSON. Don't
@@ -176,7 +210,8 @@ Full table in [`docs/WIRING.md`](docs/WIRING.md).
 | PCA OE (shared) | 27 | active-low output-disable (**not** a power cut) |
 | Air actuator | 13 / 14 / 27 | depends on the selected module |
 | DIN RX / TX | 16 / 17 | via opto-isolator, 31250 baud |
-| Panic / setup button | 0 | BOOT button — short = panic, long = setup hotspot |
+| Setup / config button | 0 | BOOT button — short = local panic, long = setup hotspot |
+| **Emergency stop** | your choice | normally-closed button to GND, set in the web UI |
 
 Key → board/channel: `board = key/16`, `channel = key%16` (16 channels per board).
 
@@ -205,6 +240,7 @@ optionally trims to a single air module for a leaner binary):
 pio run -e esp32_ble_servo_air          # BLE  + servo valve (lean)
 pio run -e esp32_wifi_servo_air         # WiFi + all air modules + web UI  ← default
 pio run -e esp32_din_servo_air          # DIN  + servo valve (lean)
+pio run -e esp32_serial_servo_air       # Serial (Raspberry Pi) + servo valve (lean)
 pio run -e esp32_ble_pwm_blower         # BLE  + PWM blower (lean)
 pio run -e esp32_wifi_digital_valve     # WiFi + all air modules (default: solenoid)
 pio run -e esp32_stepper_bellows        # BLE  + stepper bellows (lean)
@@ -233,7 +269,15 @@ pio run -e native_tests && .pio/build/native_tests/program
 Covered: PCA key mapping, out-of-range note rejection, velocity-0 notes,
 CC7 = 0, multi-velocity chords, stopping the loudest note, sustain, All Notes
 Off, BLE/WiFi loss and reconnection, I2C faults, non-blocking precharge,
-per-servo limits, and legacy calibration migration.
+per-servo limits, legacy calibration migration — plus DIN/serial link
+supervision (a held note must not look like an unplugged cable), pump-overrun
+and air-fault watchdogs, the reservoir's sensor requirement, emergency-stop
+debounce and edge detection, configuration validation across ESP32 / S2 / S3, and
+NVS schema migration.
+
+Every push also runs this suite (twice — the second time with `-Werror`) and
+builds all nine firmware profiles in GitHub Actions
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
 
 ---
 
@@ -249,8 +293,13 @@ per-servo limits, and legacy calibration migration.
 | WiFi never connects | Credentials not set yet (see [`docs/WIFI.md`](docs/WIFI.md)); it keeps retrying |
 | Notes stuck after a disconnect | Shouldn't happen — loss triggers `allNotesOff`; check the transport's `connected()` |
 | A servo strains at the travel end | Tighten that key's `minPulseUs` / `maxPulseUs` in calibration |
+| Log says `PUMP_OVERRUN` | The pump ran past `maxPumpRunMs` without stopping: leak, unreachable set-point or a dead pressure sensor |
+| Log says `AIR_NOT_INITIALISED` | The air module refused its pins, or a reservoir has no valid sensor — the boot log names the pin |
+| Web page won't save | The configuration has errors; they are listed above the form (or use *Save anyway* if you know better) |
+| Hotspot drops while configuring | Fixed: WiFi mode is owned by `NetworkManager`, the RTP retries no longer take the AP down |
 
-Fault codes are readable via `SafetyManager::faultText()`.
+Fault codes are readable via `SafetyManager::faultText()`, on the web status
+panel, and in the boot log.
 
 ---
 
@@ -278,8 +327,15 @@ Deep dive in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
   look-ahead needs added latency or a host that sends events early.
 - **Pitch bend** and polyphonic aftertouch are accepted but not mechanically
   realised (a melodica key can't bend its own pitch).
-- The **stepper-bellows** module steps at a constant rate (no acceleration
-  profile) — fine for slow bellows, not high-speed positioning.
+- The **stepper-bellows** module is open-loop: constant step rate (no
+  acceleration profile), no homing and no end-stop switches. It assumes the
+  bellows is at rest at power-up and enforces software limits only — fine for
+  slow bellows on a prototype, not for unattended operation.
+- **DIN and serial links** are considered connected while the UART is open;
+  supervision only starts if the sender emits Active Sensing (`0xFE`). That is
+  what keeps a five-second held note from looking like an unplugged cable.
+- **One transport per build.** The air system is runtime-selectable, the
+  transport is still chosen at compile time (build flag / `UserConfig.h`).
 - **Native USB-MIDI** needs an S2/S3; the classic ESP32 can't provide it.
 - Convention: **32 keys**, **C4 = MIDI 60** (lowest key F4 = 65, highest C7 = 96).
 

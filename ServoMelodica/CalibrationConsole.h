@@ -7,6 +7,7 @@
 
 #include "Config.h"
 #include "ConfigStore.h"
+#include "ConfigValidator.h"
 #include "Defaults.h"
 #include "IKeyDriver.h"
 
@@ -25,7 +26,10 @@ namespace melodica {
 //   t         test selected key       ta       test all keys
 //   s         save to NVS             d        reset selected key to default
 //   x         export as C++           j        export as JSON
-//   ?         help
+//   val       validate the config     ?        help
+//
+// Key indices are bounded by the RUNTIME key count (instrument.noteCount, up to
+// MAX_NOTES = 64), not by the compiled default of 32.
 class CalibrationConsole {
 public:
     CalibrationConsole(BoardConfig& cfg, IKeyDriver& keys, Stream& io)
@@ -62,7 +66,8 @@ private:
         if (!strcmp(cmd, "hi")) { cfg_.keys[sel_].maxPulseUs = arg; apply(); return; }
         if (!strcmp(cmd, "v")) { cfg_.keys[sel_].inverted = !cfg_.keys[sel_].inverted; apply(); return; }
         if (!strcmp(cmd, "t")) { testKey(sel_); return; }
-        if (!strcmp(cmd, "ta")) { for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) testKey(i); return; }
+        if (!strcmp(cmd, "ta")) { for (uint16_t i = 0; i < activeKeys(); ++i) testKey(i); return; }
+        if (!strcmp(cmd, "val")) { validate(); return; }
         if (!strcmp(cmd, "d")) { cfg_.keys[sel_] = makeDefaultConfig().keys[sel_]; apply(); return; }
         if (!strcmp(cmd, "s")) {
             io_.println(ConfigStore::save(cfg_) ? F("saved to NVS") : F("SAVE FAILED"));
@@ -91,10 +96,29 @@ private:
         io_.println(F("unknown command (type ?)"));
     }
 
+    // The number of keys this instrument actually has, from the runtime config.
+    uint16_t activeKeys() const {
+        uint16_t n = cfg_.instrument.noteCount;
+        if (n > MAX_NOTES) n = MAX_NOTES;
+        return n == 0 ? 1 : n;
+    }
+
     uint16_t clampIdx(long v) {
         if (v < 0) return 0;
-        if (v >= NUMBER_OF_NOTES) return NUMBER_OF_NOTES - 1;
+        if (v >= static_cast<long>(activeKeys())) return static_cast<uint16_t>(activeKeys() - 1);
         return static_cast<uint16_t>(v);
+    }
+
+    void validate() {
+        ConfigValidator::Result r = ConfigValidator::validate(cfg_);
+        for (uint8_t i = 0; i < r.count; ++i) {
+            io_.print(r[i].severity == IssueSeverity::Error ? F("ERROR   ") : F("warning "));
+            io_.println(r[i].text);
+        }
+        io_.print(r.errors);
+        io_.print(F(" error(s), "));
+        io_.print(r.warnings);
+        io_.println(F(" warning(s)"));
     }
 
     void apply() {
@@ -125,8 +149,10 @@ private:
     }
 
     void exportCpp() {
-        io_.println(F("const KeyCalibration kCalib[NUMBER_OF_NOTES] = {"));
-        for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+        io_.print(F("const KeyCalibration kCalib["));
+        io_.print(activeKeys());
+        io_.println(F("] = {"));
+        for (uint16_t i = 0; i < activeKeys(); ++i) {
             const KeyCalibration& k = cfg_.keys[i];
             io_.print(F("  {")); io_.print(k.restPulseUs); io_.print(F(", "));
             io_.print(k.pressedPulseUs); io_.print(F(", "));
@@ -139,21 +165,24 @@ private:
 
     void exportJson() {
         io_.print(F("{\"keys\":["));
-        for (uint16_t i = 0; i < NUMBER_OF_NOTES; ++i) {
+        for (uint16_t i = 0; i < activeKeys(); ++i) {
             const KeyCalibration& k = cfg_.keys[i];
             io_.print(F("{\"rest\":")); io_.print(k.restPulseUs);
             io_.print(F(",\"pressed\":")); io_.print(k.pressedPulseUs);
             io_.print(F(",\"min\":")); io_.print(k.minPulseUs);
             io_.print(F(",\"max\":")); io_.print(k.maxPulseUs);
             io_.print(F(",\"inv\":")); io_.print(k.inverted ? 1 : 0);
-            io_.print(i + 1 < NUMBER_OF_NOTES ? F("},") : F("}"));
+            io_.print(i + 1 < activeKeys() ? F("},") : F("}"));
         }
         io_.println(F("]}"));
     }
 
     void help() {
         io_.println(F("keys: k<n> r<us> p<us> lo<us> hi<us> v t ta d s x j"));
-        io_.println(F("air:  air<0-9 type> pol<0-4>  (then s + reboot)"));
+        io_.println(F("air:  air<0-10 type> pol<0-4>  (then s + reboot)"));
+        io_.println(F("misc: val (validate config) reboot"));
+        io_.print(F("keys available: 0.."));
+        io_.println(activeKeys() - 1);
     }
 
     BoardConfig& cfg_;

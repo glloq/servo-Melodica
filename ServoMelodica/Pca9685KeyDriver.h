@@ -87,6 +87,7 @@ public:
     }
 
     void update(uint32_t nowUs) override {
+        serviceHealthCheck(nowUs);
         if (cfg_.slewUsPerMs == 0) {
             // Instant move: only write when the target changed.
             for (uint16_t i = 0; i < keyCount_; ++i) {
@@ -128,6 +129,48 @@ public:
     bool healthy() const override { return allHealthy_; }
 
 private:
+    // Runtime I2C supervision.
+    //
+    // begin() probing the bus once only proves the boards were there at power-up:
+    // a board that browns out, loses its ground or has its cable pulled mid-set
+    // would keep "healthy" forever while its 16 keys silently stop moving. So one
+    // board is re-probed per interval (round-robin, a single address ACK — tens
+    // of microseconds), which is cheap enough for the real-time loop and detects
+    // the loss within boardCount * healthCheckIntervalMs.
+    //
+    // A board that comes back is re-initialised and re-commanded to its current
+    // pulses, so recovering the cable recovers the instrument.
+    void serviceHealthCheck(uint32_t nowUs) {
+        if (cfg_.healthCheckIntervalMs == 0) return;
+        uint8_t needed = cfg_.boardCount > MAX_PCA_BOARDS ? MAX_PCA_BOARDS : cfg_.boardCount;
+        if (needed == 0) return;
+        uint32_t intervalUs = static_cast<uint32_t>(cfg_.healthCheckIntervalMs) * 1000u;
+        if (lastProbeUs_ != 0 && (nowUs - lastProbeUs_) < intervalUs) return;
+        lastProbeUs_ = nowUs;
+
+        uint8_t b = probeIndex_ % needed;
+        probeIndex_ = static_cast<uint8_t>((probeIndex_ + 1) % needed);
+
+        Wire.beginTransmission(cfg_.addresses[b]);
+        bool answering = (Wire.endTransmission() == 0);
+        if (answering && !boardOk_[b]) {
+            // Board is back: re-init it and restore its keys.
+            boards_[b].begin();
+            boards_[b].setOscillatorFrequency(27000000);
+            boards_[b].setPWMFreq(cfg_.pwmFrequencyHz);
+            boardOk_[b] = true;
+            for (uint16_t i = 0; i < keyCount_; ++i) {
+                if (pcaLocationForServo(i).driverIndex == b) writePulse(i, currentPulse_[i]);
+            }
+        } else {
+            boardOk_[b] = answering;
+        }
+
+        bool all = true;
+        for (uint8_t i = 0; i < needed; ++i) all = all && boardOk_[i];
+        allHealthy_ = all;
+    }
+
     void writePulse(uint16_t i, uint16_t pulseUs) {
         PcaLocation loc = pcaLocationForServo(i);
         if (loc.driverIndex >= MAX_PCA_BOARDS || !boardOk_[loc.driverIndex]) return;
@@ -145,6 +188,8 @@ private:
     uint16_t currentPulse_[MAX_NOTES];
     uint16_t keyCount_;
     uint32_t lastUpdateUs_ = 0;
+    uint32_t lastProbeUs_ = 0;
+    uint8_t probeIndex_ = 0;
 };
 
 }  // namespace melodica
