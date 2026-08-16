@@ -9,25 +9,50 @@
 #include "ConnectionManager.h"
 #include "EventQueue.h"
 #include "IMidiTransport.h"
+#include "Log.h"
+#include "NetworkManager.h"
 
 namespace melodica {
 
 // WiFi link driver for the reconnection state machine. Wrapping WiFi behind
 // ILink keeps ConnectionManager (and its exponential backoff) transport-neutral
 // and unit-testable with a mock.
+//
+// It asks NetworkManager to connect the station and never touches WiFi.mode()
+// itself, so a retry storm can no longer knock down the configuration hotspot.
 class WifiLink : public ILink {
 public:
     WifiLink(const char* ssid, const char* pass) : ssid_(ssid), pass_(pass) {}
     void beginConnect() override {
-        WiFi.mode(WIFI_STA);
-        WiFi.begin(ssid_, pass_);
+        NetworkManager::instance().connectStation(ssid_, pass_);
     }
-    bool isUp() const override { return WiFi.status() == WL_CONNECTED; }
+    bool isUp() const override { return NetworkManager::instance().stationUp(); }
 
 private:
     const char* ssid_;
     const char* pass_;
 };
+
+// The AppleMIDI session name is fixed by the APPLEMIDI_CREATE_INSTANCE macro at
+// compile time, but the operator can edit network.sessionName from the web UI.
+// Apply it at runtime when the library version exposes a setter, and say so in
+// the log when it does not, instead of leaving a control that quietly does
+// nothing.
+//
+// Applied before the session is advertised, so invitations carry the chosen
+// name. (AppleMIDI keeps the name unless the sketch defines NO_SESSION_NAME to
+// save 100 bytes — with that define the library's own setter is a no-op and the
+// instrument keeps its built-in name.)
+template <typename T>
+inline auto applySessionName(T& session, const char* name, int)
+    -> decltype(session.setName(name), void()) {
+    session.setName(name);
+    LOG_INFO("RTP-MIDI session name: %s", name);
+}
+template <typename T>
+inline void applySessionName(T&, const char* name, long) {
+    LOG_WARN("AppleMIDI library has no setName(): session stays as built, not '%s'", name);
+}
 
 // RTP-MIDI (AppleMIDI over WiFi) adapter. Templated on the MIDI interface and
 // AppleMIDI session types to match the library's macro-generated instances.
@@ -41,11 +66,13 @@ template <typename MidiType, typename AppleMidiType>
 class RtpMidiTransport : public IMidiTransport {
 public:
     RtpMidiTransport(MidiType& midi, AppleMidiType& apple, const char* ssid,
-                     const char* pass, uint16_t backoffBaseMs, uint16_t backoffMaxMs)
+                     const char* pass, uint16_t backoffBaseMs, uint16_t backoffMaxMs,
+                     const char* sessionName = nullptr)
         : midi_(midi),
           apple_(apple),
           link_(ssid, pass),
-          conn_(link_, backoffBaseMs, backoffMaxMs) {
+          conn_(link_, backoffBaseMs, backoffMaxMs),
+          sessionName_(sessionName) {
         self_ = this;
     }
 
@@ -58,6 +85,9 @@ public:
         conn_.update(millis());
         if (conn_.justConnected() && !sessionStarted_) {
             // Bring the AppleMIDI session up exactly once WiFi is available.
+            if (sessionName_ && sessionName_[0] != '\0') {
+                applySessionName(apple_, sessionName_, 0);
+            }
             midi_.begin(MIDI_CHANNEL_OMNI);
             apple_.setHandleConnected(
                 [](const auto&, const char*) { if (self_) self_->sessionConnected_ = true; });
@@ -117,6 +147,7 @@ private:
     WifiLink link_;
     ConnectionManager conn_;
     EventQueue<64> queue_;
+    const char* sessionName_ = nullptr;
     bool sessionStarted_ = false;
     volatile bool sessionConnected_ = false;
     static inline RtpMidiTransport* self_ = nullptr;

@@ -48,22 +48,40 @@ private:
 
 class MockAirController : public IAirController {
 public:
-    bool begin() override { return true; }
+    bool begin() override { return healthy_; }
     void setDemand(const AirDemand& d) override { demand_ = d; ++setCalls_; }
     void update(uint32_t) override {}
     void stop() override { stopped_ = true; }
-    void emergencyStop() override { emergency_ = true; demand_ = AirDemand{}; }
+    void emergencyStop() override {
+        emergency_ = true;
+        demand_ = AirDemand{};
+        runtimeMs_ = 0;  // a real module resets its run tracker on a hard close
+        running_ = false;
+    }
+
+    bool isRunning() const override { return running_; }
+    uint32_t runtimeMs() const override { return runtimeMs_; }
+    bool healthy() const override { return healthy_; }
+    AirFault fault() const override { return fault_; }
 
     const AirDemand& demand() const { return demand_; }
     bool stopped() const { return stopped_; }
     bool emergency() const { return emergency_; }
     int setCalls() const { return setCalls_; }
 
+    // Test hooks for the supervision paths.
+    void setRunning(bool r, uint32_t ms) { running_ = r; runtimeMs_ = ms; }
+    void setFault(AirFault f) { fault_ = f; healthy_ = (f == AirFault::None); }
+
 private:
     AirDemand demand_{};
     bool stopped_ = false;
     bool emergency_ = false;
     int setCalls_ = 0;
+    bool running_ = false;
+    uint32_t runtimeMs_ = 0;
+    bool healthy_ = true;
+    AirFault fault_ = AirFault::None;
 };
 
 // Scriptable transport used to test the composition path.

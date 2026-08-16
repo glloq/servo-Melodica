@@ -52,6 +52,11 @@ are used.
 | `AIR_EXTERNAL` | `enablePin` (digital permission) |
 | `AIR_SIMULATION` | none |
 
+Pins are checked against the chip before use (`HardwareCaps` / `ConfigValidator`):
+an input-only pad (GPIO34–39 on the classic ESP32), an SPI-flash pin (GPIO6–11) or
+a DAC request on a pin without a DAC is refused, logged and left undriven rather
+than half-driven.
+
 ## Transport-specific pins
 
 | Transport | Wiring |
@@ -61,8 +66,40 @@ are used.
 | USB (S2/S3) | native USB connector |
 | Serial | USB-serial / UART to the host (e.g. Raspberry Pi) |
 
-## Panic / setup button
+### Link supervision on DIN and serial
 
-`GPIO0` (BOOT button, active-low): a **short** press is a local panic (release
-keys, close air); a **long** press (≥ 3 s) starts the WiFi setup hotspot + web UI
-(WiFi builds).
+A byte-stream MIDI link carries no idle traffic, so **silence is not a
+disconnection** — a five-second held note sends nothing between its Note On and
+Note Off. The firmware therefore treats an open UART as connected.
+
+If you *want* the instrument to stop when the sender disappears, have the sender
+emit **Active Sensing (`0xFE`)** at least every 300 ms (any standard MIDI source
+option, or one extra byte in a Raspberry Pi bridge loop). That arms supervision:
+from the first `0xFE`, silence longer than `safety.activeSensingTimeoutMs`
+(default 300 ms) counts as a lost link and releases the keys.
+
+## Buttons
+
+| Input | Role |
+|-------|------|
+| `GPIO0` (BOOT, active-low) | **Configuration**: short press = local panic, long press (≥ 3 s) = start the WiFi setup hotspot + web UI |
+| `safety.panicPin` (default: none) | **Emergency stop**: fires on the transition into the active state, while the button is still held |
+
+### Emergency stop (recommended)
+
+The BOOT button is a configuration control: it only acts when you *release* a
+short press, and a press between 1.5 s and 3 s does nothing. Wire a real stop
+instead — set `safety.panicPin` in the web UI (Safety section):
+
+```
+                 3.3V (internal pull-up)
+                        │
+   GPIO<panicPin> ──────┴───────[ NC mushroom button ]────── GND
+```
+
+Use a **normally-closed** button and tick *"Stop when pin reads HIGH"*
+(`panicActiveHigh = true`). The loop is closed in normal operation, so pressing
+the button **or cutting the wire** both read HIGH and stop the instrument
+(release all keys, close the air, disable the servo outputs, latch a `PANIC`
+fault). Clear the fault from the web page or the serial console once the cause is
+dealt with.

@@ -4,6 +4,7 @@
 #include <cstdint>
 
 #include "AirDemand.h"
+#include "AirRunTracker.h"
 #include "Config.h"
 
 namespace melodica {
@@ -43,6 +44,10 @@ public:
             if (target == 0 && level_ == 0) wasOpen_ = false;
         }
 
+        // Duty tracking uses the PRE-inversion level: "running" means air is
+        // flowing, whichever way the actuator is wired.
+        run_.update(nowUs, level_ > 0);
+
         return applyInversion(static_cast<uint8_t>(level_));
     }
 
@@ -51,10 +56,15 @@ public:
         level_ = 0;
         wasOpen_ = false;
         demand_ = AirDemand{};
+        run_.reset();
         return applyInversion(0);
     }
 
     uint8_t rawLevel() const { return static_cast<uint8_t>(level_); }
+
+    // Duty-cycle introspection, used by the pump/blower overrun watchdog.
+    bool isRunning() const { return run_.running(); }
+    uint32_t runtimeMs() const { return run_.runtimeMs(); }
 
 private:
     uint16_t targetLevel() const {
@@ -93,6 +103,7 @@ private:
     uint16_t level_ = 0;  // 0..255 pre-inversion
     uint32_t lastUs_ = 0;
     bool wasOpen_ = false;
+    AirRunTracker run_;
 };
 
 }  // namespace melodica

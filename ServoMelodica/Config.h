@@ -60,6 +60,10 @@ struct KeyDriverConfig {
     // Optional slew-rate limit in microseconds-of-pulse per millisecond.
     // 0 disables ramping (instant move). Provides the "vitesse/rampe" feature.
     uint16_t slewUsPerMs = 0;
+    // Runtime I2C supervision: one board is re-probed every healthCheckIntervalMs
+    // (round-robin, one address per cycle) so a board that dies AFTER begin() is
+    // detected. 0 disables the runtime check (begin()-time probe only).
+    uint16_t healthCheckIntervalMs = 500;
 };
 
 // ---------------------------------------------------------------------------
@@ -191,15 +195,28 @@ struct NetworkConfig {
 struct SafetyConfig {
     uint32_t commTimeoutMs = 5000;      // no MIDI + no connection => safe stop
     uint32_t maxKeyHoldMs = 30000;      // stuck-key watchdog
-    uint32_t maxPumpRunMs = 120000;     // pump/blower duty watchdog
+    uint32_t maxPumpRunMs = 120000;     // pump/blower duty watchdog (0 = disabled)
     bool disableOutputsOnIdle = true;   // drop OE after air release when idle
     uint32_t idleDisableDelayMs = 2000; // wait this long idle before dropping OE
+    // Byte-stream links (DIN / serial) are "up" as long as the UART is open: a
+    // silent MIDI cable is NOT a disconnected one. Link supervision is only armed
+    // once the sender uses Active Sensing (0xFE), which is exactly the promise
+    // "I will keep talking"; this is the timeout applied from then on.
+    uint16_t activeSensingTimeoutMs = 300;
+    // Dedicated hardware emergency stop, independent of the BOOT button.
+    // -1 = none. A normally-CLOSED button to GND with the internal pull-up is the
+    // recommended wiring: opening the loop (or a cut wire) reads HIGH => set
+    // panicActiveHigh = true so a broken wire also triggers the stop.
+    int8_t panicPin = -1;
+    bool panicActiveHigh = true;
+    uint16_t panicDebounceMs = 5;
 };
 
 // ---------------------------------------------------------------------------
 // Persisted, versioned root config
 // ---------------------------------------------------------------------------
-constexpr uint16_t CONFIG_SCHEMA_VERSION = 2;  // bumped: geometry + composite air
+// v3: safety (active sensing, panic input), key-driver health check.
+constexpr uint16_t CONFIG_SCHEMA_VERSION = 3;
 
 struct BoardConfig {
     uint16_t schemaVersion = CONFIG_SCHEMA_VERSION;

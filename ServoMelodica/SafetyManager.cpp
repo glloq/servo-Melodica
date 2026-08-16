@@ -22,7 +22,10 @@ void SafetyManager::triggerPanic(uint32_t nowUs) {
 }
 
 void SafetyManager::enterFault(SafetyFault fault, uint32_t nowUs) {
-    if (fault_ == fault) return;  // already latched on this fault
+    // First cause wins: once a fault is latched the instrument is already in its
+    // safe state, and re-entering on a second symptom would only hide the
+    // original reason (and re-run the safe-stop on every loop iteration).
+    if (fault_ != SafetyFault::None) return;
     fault_ = fault;
     faultAtUs_ = nowUs;
     LOG_ERROR("Safety fault #%u -> forcing safe state", static_cast<unsigned>(fault));
@@ -36,8 +39,26 @@ void SafetyManager::update(uint32_t nowUs, bool connected) {
     if (connected) everConnected_ = true;
 
     // --- I2C health: a board that stopped answering is critical. ---
+    // Pca9685KeyDriver re-probes one board per cycle at runtime, so this also
+    // catches a board that dies long after boot, not just a missing one.
     if (!keys_.healthy()) {
         enterFault(SafetyFault::I2cFault, nowUs);
+    }
+
+    // --- Air module health: bad pins, failed bring-up, or a regulated
+    // reservoir configured without a usable pressure sensor. Such a module
+    // must never be commanded, so latch immediately. ---
+    if (!air_.healthy()) {
+        enterFault(SafetyFault::AirNotInitialised, nowUs);
+    }
+
+    // --- Pump / blower duty watchdog. ---
+    // A pump that has been running without interruption for longer than
+    // maxPumpRunMs is either fighting a leak, chasing an unreachable set-point
+    // or reading a dead sensor. None of those get better by waiting, and all of
+    // them cook the pump, so stop everything and latch (manual clear required).
+    if (config_.maxPumpRunMs > 0 && air_.runtimeMs() > config_.maxPumpRunMs) {
+        enterFault(SafetyFault::PumpOverrun, nowUs);
     }
 
     // --- Communication watchdog: no MIDI and no link. ---
@@ -90,6 +111,11 @@ void SafetyManager::update(uint32_t nowUs, bool connected) {
         switch (fault_) {
             case SafetyFault::I2cFault:
                 recoverable = keys_.healthy() && connected;
+                break;
+            case SafetyFault::AirNotInitialised:
+                // Only if the module reports itself healthy again (it will not
+                // until the configuration is fixed and the board rebooted).
+                recoverable = air_.healthy();
                 break;
             case SafetyFault::TransportLost:
             case SafetyFault::CommTimeout:

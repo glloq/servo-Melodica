@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The instrument core (MIDI parsing, air policy and ramps, note state, safety
+  # watchdogs, config validation and migration) is platform-independent, so it
+  # runs on a plain host compiler in seconds — no ESP32 needed.
+  native-tests:
+    name: Native unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run
+        run: bash scripts/run_native_tests.sh
+      - name: Build with strict warnings
+        run: |
+          g++ -std=c++17 -Wall -Wextra -Werror -DLOG_LEVEL=0 \
+              -IServoMelodica -Itest \
+              test/*.cpp ServoMelodica/*.cpp -o /tmp/native_tests_strict
+          /tmp/native_tests_strict
+
+  # Every shipped profile must keep compiling: one transport x air-module
+  # combination per environment, exactly as documented in the README.
+  firmware:
+    name: Build ${{ matrix.env }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env:
+          - esp32_ble_servo_air
+          - esp32_ble_nimble_servo_air
+          - esp32_wifi_servo_air
+          - esp32_din_servo_air
+          - esp32_serial_servo_air
+          - esp32_ble_pwm_blower
+          - esp32_wifi_digital_valve
+          - esp32_stepper_bellows
+          - esp32s3_usb_servo_air
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: pio-${{ runner.os }}-
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+      - name: Build
+        run: pio run -e ${{ matrix.env }}

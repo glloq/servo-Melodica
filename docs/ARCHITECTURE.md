@@ -36,14 +36,23 @@ role, not by directory:
   - `InstrumentController` — note engine + air-demand + non-blocking scheduler.
   - `AirPolicy`, `AirRamp` — flow computation and actuator shaping.
   - `MidiFilter`, `MidiParser`, `EventQueue` — MIDI plumbing.
+  - `MidiLinkWatchdog` — link state for byte-stream transports (DIN / serial):
+    an open UART is connected; supervision is armed by Active Sensing only.
   - `ConnectionManager` — non-blocking reconnection with exponential backoff.
   - `SafetyManager` — watchdogs + safe-state enforcement.
-  - `Config`, `Defaults`, `Calibration`, `KeyPulse`, `UserConfig` — config + maths.
+  - `AirRunTracker` — uninterrupted actuator run time, feeding the pump watchdog.
+  - `PanicInput` — debounce + edge detection for the emergency-stop input.
+  - `HardwareCaps` — what each GPIO can do, per ESP32 variant.
+  - `ConfigValidator` — refuses configurations the hardware cannot honour.
+  - `Config`, `Defaults`, `Calibration`, `ConfigLegacy`, `KeyPulse`, `UserConfig`
+    — config, persisted-record layouts + migrations, and maths.
 - **Key driver** — `Pca9685KeyDriver` (the reference `IKeyDriver`).
 - **Air modules** — nine `IAirController` modules on a shared `AirRamp`, plus
   `AirControllerFactory` which placement-news the runtime-selected module.
 - **Transports** — five `IMidiTransport` adapters (BLE, RTP, DIN, USB, serial).
 - **Platform** — ESP32 NVS store (`ConfigStore`), serial `CalibrationConsole`,
+  `NetworkManager` (the single owner of the WiFi mode: the RTP transport asks for
+  a station, the portal asks for an access point, this decides STA/AP/AP_STA),
   and `WebConfigPortal` (web UI + captive hotspot, WiFi builds only).
 - **`ServoMelodica.ino`** — the composition root: picks one transport by build
   flag / `UserConfig.h`, builds the runtime-selected air module, and wires
@@ -66,8 +75,28 @@ orchestration logic (host-tested with mocks); the ESP32 actuators live in
 a pressure-regulated tank. Geometry (`InstrumentConfig.noteCount`,
 `firstMidiNote`) is runtime too, with arrays sized to the `MAX_NOTES = 64` cap.
 
+## Supervision contracts
+
+Two things the core asks its hardware about, and what it does with the answers:
+
+- **`IKeyDriver::healthy()`** — `Pca9685KeyDriver` re-probes one board per
+  `healthCheckIntervalMs` (round-robin), so a board that dies *after* boot is
+  detected within `boardCount × interval`; a board that comes back is
+  re-initialised and its keys restored.
+- **`IAirController::isRunning()` / `runtimeMs()` / `healthy()` / `fault()`** —
+  every module tracks its own uninterrupted run time (`AirRunTracker`, driven by
+  the pre-inversion ramp level, plus the source's own tracker for a reservoir
+  that fills with no notes playing). `SafetyManager` enforces
+  `maxPumpRunMs` (→ `PumpOverrun`) and latches `AirNotInitialised` for a module
+  that refuses to run — unusable pin, failed bring-up, or a regulated reservoir
+  with no valid pressure sensor. A faulted module is never commanded.
+
+`SafetyManager` keeps the FIRST cause of a shutdown: a second symptom does not
+overwrite it, and the safe stop is not re-run on every loop iteration.
+
 ## Data flow per loop iteration (non-blocking)
 
+0. The emergency-stop input is read first, so nothing else can delay it.
 1. `transport.update()` decodes wire bytes into a `MidiEvent` queue.
 2. The core drains the queue → `InstrumentController::handleEvent()`.
 3. `handleEvent` updates the `NoteState` table and recomputes the `AirDemand`.
@@ -97,3 +126,28 @@ the old blocking `AIR_ANTICIPATION_MS`:
 - `airReleaseDelayMs` — keep air flowing briefly after the last note.
 
 These delays are honoured with `micros()` deadlines, never `delay()`.
+
+## Configuration: validation and persistence
+
+`ConfigValidator` answers "can this board actually do what this configuration
+asks?" using `HardwareCaps` (per-variant GPIO capabilities: existence,
+input-only pads, SPI-flash pins, ADC/DAC channels, strapping pins, LEDC channel
+count). It returns errors *and* warnings, so the UI can refuse an impossible
+setup (64 keys on one PCA9685, a solenoid on GPIO34, two jobs on one pin, a
+regulated reservoir with no sensor) while merely flagging a risky one (a
+strapping pin, a disabled watchdog, an ADC2 sensor on a WiFi build). It is pure
+logic and fully host-tested; the web portal, the serial console (`val`) and the
+boot sequence all use the same code.
+
+Persistence is a header-tagged record:
+
+```
+ConfigRecordHeader { magic 'MELO', schema, size, crc32 }  +  BoardConfig
+```
+
+The header is what makes migration possible: a stored record is identified and
+length-checked before anything interprets its bytes. Older layouts are frozen in
+`ConfigLegacy.h` with a field-by-field converter (`legacy::migrateV2`), so a
+schema change that resizes `BoardConfig` upgrades a user's calibration instead of
+silently discarding it — which is exactly what the previous "size must match
+exactly, then consider migrating" ordering did.
